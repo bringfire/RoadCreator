@@ -95,14 +95,41 @@ public sealed class IntersectionSourceRoad
     [JsonPropertyName("profileName")]
     public string? ProfileName { get; set; }
 
+    [JsonPropertyName("symmetric")]
+    public bool Symmetric { get; set; } = true;
+
+    [JsonPropertyName("requiresSideSelection")]
+    public bool RequiresSideSelection { get; set; }
+
+    [JsonPropertyName("resolvedSide")]
+    public string? ResolvedSide { get; set; }
+
     [JsonPropertyName("carriagewayEdgeOffset")]
     public double CarriagewayEdgeOffset { get; set; }
+
+    [JsonPropertyName("carriagewaySurfaceOffset")]
+    public double CarriagewaySurfaceOffset { get; set; }
+
+    [JsonPropertyName("curbReturnDriverOffset")]
+    public double CurbReturnDriverOffset { get; set; }
+
+    [JsonPropertyName("outerEnvelopeOffset")]
+    public double OuterEnvelopeOffset { get; set; }
 
     [JsonPropertyName("selectedParameter")]
     public double SelectedParameter { get; set; }
 
     [JsonPropertyName("forwardTangent")]
     public IntersectionPoint3 ForwardTangent { get; set; } = new(1.0, 0.0, 0.0);
+
+    public double EffectiveCarriagewaySurfaceOffset =>
+        CarriagewaySurfaceOffset > 0.0 ? CarriagewaySurfaceOffset : CarriagewayEdgeOffset;
+
+    public double EffectiveCurbReturnDriverOffset =>
+        CurbReturnDriverOffset > 0.0 ? CurbReturnDriverOffset : EffectiveCarriagewaySurfaceOffset;
+
+    public double EffectiveOuterEnvelopeOffset =>
+        OuterEnvelopeOffset > 0.0 ? OuterEnvelopeOffset : EffectiveCarriagewaySurfaceOffset;
 }
 
 public sealed class IntersectionProvisionalBoundary2D

@@ -445,7 +445,7 @@ public sealed class IntersectionRealizer
         foreach (var sourceRoad in request.SourceRoads)
         {
             if (string.IsNullOrWhiteSpace(sourceRoad.CenterlineId)
-                || !(sourceRoad.CarriagewayEdgeOffset > 0.0)
+                || !(sourceRoad.EffectiveCarriagewaySurfaceOffset > 0.0)
                 || !Guid.TryParse(sourceRoad.CenterlineId, out var centerlineId))
             {
                 continue;
@@ -552,7 +552,7 @@ public sealed class IntersectionRealizer
     {
         var centerlineObject = doc.Objects.FindId(centerlineId);
         var centerlineLayerPath = GetLayerPath(doc, centerlineObject?.Attributes.LayerIndex ?? -1);
-        var expectedOffset = sourceRoad.CarriagewayEdgeOffset;
+        var expectedOffset = sourceRoad.EffectiveCarriagewaySurfaceOffset;
 
         SemanticBoundaryCandidate? bestLeft = null;
         SemanticBoundaryCandidate? bestRight = null;
@@ -953,6 +953,11 @@ public sealed class IntersectionRealizer
                 return null;
             }
 
+            var plannedRadii = BuildNormalizedBoundaryCornerRadiusPlan(
+                boundaryResolution,
+                requestedRadii,
+                tolerance);
+
             for (int cornerOrder = 0; cornerOrder < boundaryResolution.Corners.Count; cornerOrder++)
             {
                 var incomingIndex = (cornerOrder + boundaryResolution.Edges.Count - 1) % boundaryResolution.Edges.Count;
@@ -975,6 +980,10 @@ public sealed class IntersectionRealizer
                         return null;
                     }
 
+                var plannedRadius = plannedRadii.TryGetValue(corner.SemanticIndex, out var normalizedRadius)
+                    ? normalizedRadius
+                    : requestedRadius;
+
                 if (!TryBuildBoundaryCornerFillet(
                         corner.SemanticIndex,
                         incoming.Id,
@@ -983,6 +992,7 @@ public sealed class IntersectionRealizer
                         outgoing.Curve,
                         cornerPoint,
                         requestedRadius,
+                        plannedRadius,
                         tolerance,
                         out var result,
                         out var attempt))
@@ -1351,6 +1361,84 @@ public sealed class IntersectionRealizer
             fillet.ArcCurve.Dispose();
     }
 
+    private static Dictionary<int, double> BuildNormalizedBoundaryCornerRadiusPlan(
+        BoundaryEdgeResolution boundaryResolution,
+        IReadOnlyDictionary<int, double> requestedRadii,
+        double tolerance)
+    {
+        var planned = new Dictionary<int, double>();
+        if (boundaryResolution.Edges.Count == 0 || requestedRadii.Count == 0)
+            return planned;
+
+        var edgeLengths = boundaryResolution.Edges
+            .Select(edge => Math.Max(edge.Curve.GetLength(), tolerance * 10.0))
+            .ToArray();
+        var meanEdgeLength = edgeLengths.Average();
+        if (!(meanEdgeLength > tolerance))
+        {
+            foreach (var pair in requestedRadii)
+                planned[pair.Key] = pair.Value;
+            return planned;
+        }
+
+        for (int cornerOrder = 0; cornerOrder < boundaryResolution.Corners.Count; cornerOrder++)
+        {
+            var semanticIndex = boundaryResolution.Corners[cornerOrder].SemanticIndex;
+            if (!requestedRadii.TryGetValue(semanticIndex, out var requestedRadius) || !(requestedRadius > 0.0))
+                continue;
+
+            var previousEdgeLength = edgeLengths[(cornerOrder + boundaryResolution.Edges.Count - 1) % boundaryResolution.Edges.Count];
+            var nextEdgeLength = edgeLengths[cornerOrder];
+            var adjacentMeanLength = (previousEdgeLength + nextEdgeLength) * 0.5;
+
+            // Short adjacent edges get slightly smaller radii so they retain more usable arm length.
+            var normalizedScale = Math.Clamp(adjacentMeanLength / meanEdgeLength, 0.82, 1.0);
+            planned[semanticIndex] = RoundTo(requestedRadius * normalizedScale, 4);
+        }
+
+        return planned;
+    }
+
+    private static double ClampBoundaryCornerRadiusToGeometry(
+        Curve incomingSegment,
+        Curve outgoingSegment,
+        double targetRadius,
+        double tolerance)
+    {
+        if (!(targetRadius > 0.0))
+            return targetRadius;
+
+        var incomingLength = incomingSegment.GetLength();
+        var outgoingLength = outgoingSegment.GetLength();
+        if (!(incomingLength > tolerance * 10.0) || !(outgoingLength > tolerance * 10.0))
+            return targetRadius;
+
+        var incomingTangent = incomingSegment.TangentAtEnd;
+        var outgoingTangent = outgoingSegment.TangentAtStart;
+        incomingTangent.Reverse();
+        incomingTangent.Z = 0.0;
+        outgoingTangent.Z = 0.0;
+        if (!incomingTangent.Unitize() || !outgoingTangent.Unitize())
+            return targetRadius;
+
+        var cornerAngle = Vector3d.VectorAngle(incomingTangent, outgoingTangent, Plane.WorldXY);
+        if (!double.IsFinite(cornerAngle))
+            return targetRadius;
+
+        cornerAngle = Math.Clamp(cornerAngle, RhinoMath.ToRadians(5.0), RhinoMath.ToRadians(175.0));
+        var tangentFactor = Math.Tan(cornerAngle * 0.5);
+        if (!(tangentFactor > 1e-6))
+            return targetRadius;
+
+        var incomingBudget = incomingLength * 0.45;
+        var outgoingBudget = outgoingLength * 0.45;
+        var maxRadius = Math.Min(incomingBudget, outgoingBudget) * tangentFactor;
+        if (!(maxRadius > tolerance * 2.0))
+            return targetRadius;
+
+        return RoundTo(Math.Max(tolerance * 2.0, Math.Min(targetRadius, maxRadius)), 4);
+    }
+
     private static bool TryBuildBoundaryCornerFillet(
         int cornerOrder,
         string incomingEdgeId,
@@ -1359,6 +1447,7 @@ public sealed class IntersectionRealizer
         Curve outgoingSegment,
         Point3d cornerPoint,
         double requestedRadius,
+        double targetRadius,
         double tolerance,
         out BoundaryCornerFilletResult result,
         out OuterCornerAttempt attempt)
@@ -1389,7 +1478,12 @@ public sealed class IntersectionRealizer
         using (outgoingLocal)
         {
             var angleTolerance = RhinoMath.ToRadians(1.0);
-            var tryRadius = requestedRadius;
+            var tryRadius = ClampBoundaryCornerRadiusToGeometry(
+                incomingSegment,
+                outgoingSegment,
+                targetRadius,
+                tolerance);
+            lastRadius = tryRadius;
             for (int i = 0; i < 6; i++)
             {
                 lastRadius = tryRadius;
@@ -3705,8 +3799,8 @@ public sealed class IntersectionRealizer
 
         var alignment = localTangent * forwardTangent >= 0.0 ? 1.0 : -1.0;
         var baseSignedOffset = physicalSide.Equals("right", StringComparison.OrdinalIgnoreCase)
-            ? sourceRoad.CarriagewayEdgeOffset
-            : -sourceRoad.CarriagewayEdgeOffset;
+            ? sourceRoad.EffectiveCarriagewaySurfaceOffset
+            : -sourceRoad.EffectiveCarriagewaySurfaceOffset;
         var signedOffset = baseSignedOffset * alignment;
 
         return Math.Abs(signedOffset) <= tolerance
@@ -3904,7 +3998,7 @@ public sealed class IntersectionRealizer
             ? 0.0
             : request.AnalysisGeometry2D.CurbReturnArcs.Max(static arc => arc.Radius);
         var baseLength = Math.Max(
-            sourceRoad.CarriagewayEdgeOffset * 6.0,
+            sourceRoad.EffectiveCarriagewaySurfaceOffset * 6.0,
             Math.Max(diagonal * 1.25, maxRadius * 3.0));
         return Math.Clamp(baseLength, 12.0, 80.0);
     }
