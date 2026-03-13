@@ -1,0 +1,338 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 28. února 2016 17:06:17
+
+Call Silniceprofilvlastni()
+Sub Silniceprofilvlastni()
+	
+	Dim Trasa3D,p,pmax,Trasa2D,Surfacebase,SPoints,Rozsireni,Vlastnosti
+	
+
+	If Rhino.IsLayer("TEREN") Then
+		Rhino.LayerVisible "TEREN", False
+	End If
+	Trasa3D = Rhino.GetObject("Vyber trasu na ktere chces vytvorit silnici", 4)
+	If IsNull(Trasa3D) Then
+		Rhino.Print("Nevybral jste trasu")
+		Exit Sub	
+	End If
+	
+	If Rhino.IsLayer("Krivky pricny rez Silnice") Then
+		Rhino.CurrentLayer("Krivky pricny rez Silnice")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Krivky pricny rez Silnice")
+		Rhino.CurrentLayer("Krivky pricny rez Silnice")
+	End If
+	
+	Dim Moznostivyberu,Vychozi
+	Moznostivyberu = Array("Krajnice", "Ne", "Ano",  _
+		"Smeroverozdelena", "Ne", "Ano", _
+		"Symetricka", "Ne", "Ano", _
+		"Rozsireni", "Ne", "Ano", _
+		"Zmenasirkyjizdnihopasu", "Ne", "Ano")
+	Vychozi = Array(True, False, True, True, False)
+	Vlastnosti = Rhino.GetBoolean("Vlastnosti silnice", Moznostivyberu, Vychozi)
+	'Parametry silnice
+	
+	Dim Silnice,Strednipas,sirkajizdnihopasu,Silnice2
+	
+
+	If Vlastnosti(2) = True Then
+		Silnice = Rhino.GetReal("Urci sirku silnice", 5, 2, 20)
+		If IsNull(Silnice) Then
+			Rhino.Print("Neurcil jste sirku silnice")
+			Exit Sub	
+		End If
+		Silnice2 = Silnice
+	Else
+		Silnice = Rhino.GetReal("Urci sirku silnice prave casti", 5, 2, 20)
+		If IsNull(Silnice) Then
+			Rhino.Print("Neurcil jste sirku silnice")
+			Exit Sub	
+		End If
+		Silnice2 = Rhino.GetReal("Urci sirku silnice leve casti", 5, 2, 20)
+		If IsNull(Silnice) Then
+			Rhino.Print("Neurcil jste sirku silnice")
+			Exit Sub	
+		End If
+	End If
+		
+	If Vlastnosti(1) = False Then 
+		Strednipas = 0
+	Else
+		Strednipas = Rhino.GetReal("Urci sirku strednihopasu", 1, 0.1, 10)
+		If IsNull(Strednipas) Then
+			Rhino.Print("Neurcil jste sirku strednihopasu")
+			Exit Sub	
+		End If
+	End If
+	
+	If Vlastnosti(4) = False Then 
+		sirkajizdnihopasu = 3.25
+	Else
+		sirkajizdnihopasu = Rhino.GetReal("Urci ", 3, 2.75, 3.75)
+		If IsNull(sirkajizdnihopasu) Then
+			Rhino.Print("Neurcil jste sirku jizdniho pasu")
+			Exit Sub	
+		End If
+	End If
+	
+	
+	p = Rhino.GetReal("Urci pricny sklon v prime", 2.5, 2, 4)
+	If IsNull(p) Then
+		Rhino.Print("Neurcil jste pricny sklon v prime")
+		Exit Sub	
+	End If
+	
+	pmax = Rhino.GetReal("Urci pricny sklon v oblouku", 4, 4, 20)
+	If IsNull(pmax) Then
+		Rhino.Print("Neurcil jste pricny sklon v oblouku")
+		Exit Sub	
+	End If
+	
+	If Vlastnosti(0) = True Then
+		
+		Dim Svodidla,Moznostivyberusvodidla,Vychozisvodidla
+		Moznostivyberusvodidla = Array("Osazeni", "Smerovesloupky", "Svodidla")
+		Vychozisvodidla = Array(True)
+		Svodidla = Rhino.GetBoolean("Nezpevnena krajnice?", Moznostivyberusvodidla, Vychozisvodidla)
+		If IsNull(Svodidla) Then
+			Exit Sub	
+		End If
+		
+		Dim krajnicesirka
+		If svodidla(0) = True Then
+			krajnicesirka = 0.5 + 1
+		Else
+			krajnicesirka = 0.5 + 0.25
+		End If
+	End If
+
+	
+	
+
+	Dim obloukpoints(),primapoints()
+	If Vlastnosti(0) = True Then
+		If Strednipas = 0 Then
+			ReDim obloukpoints(4)
+			ReDim primapoints(4)
+			primapoints(0) = Array(-(Silnice + krajnicesirka), 0, (-p / 100 * Silnice) + (-8 / 100 * krajnicesirka))
+			primapoints(1) = Array(-Silnice, 0, -p / 100 * Silnice)
+			primapoints(2) = Array(0, 0, 0)
+			primapoints(3) = Array(Silnice2, 0, -p / 100 * Silnice2)
+			primapoints(4) = Array(Silnice2 + krajnicesirka, 0, (-p / 100 * Silnice2) + (-8 / 100 * krajnicesirka))
+		Else
+			ReDim obloukpoints(5)
+			ReDim primapoints(5)
+			primapoints(0) = Array(-(Silnice + Strednipas / 2 + krajnicesirka), 0, (-p / 100 * (Silnice + Strednipas / 2)) + (-8 / 100 * krajnicesirka))
+			primapoints(1) = Array(-Silnice - Strednipas / 2, 0, -p / 100 * (Silnice + Strednipas / 2))
+			primapoints(2) = Array(-Strednipas / 2, 0, 0)
+			primapoints(3) = Array(+Strednipas / 2, 0, 0)
+			primapoints(4) = Array(Silnice2 + Strednipas / 2, 0, -p / 100 * (Silnice2 + Strednipas / 2))
+			primapoints(5) = Array(Silnice2 + Strednipas / 2 + krajnicesirka, 0, (-p / 100 * (Silnice2 + Strednipas / 2)) + (-8 / 100 * krajnicesirka))
+		End If
+	Else
+		If Strednipas = 0 Then
+			ReDim obloukpoints(2)
+			ReDim primapoints(2)
+			primapoints(0) = Array(-Silnice, 0, -p / 100 * Silnice)
+			primapoints(1) = Array(0, 0, 0)
+			primapoints(2) = Array(Silnice2, 0, -p / 100 * Silnice2)
+		Else
+			ReDim obloukpoints(3)
+			ReDim primapoints(3)
+			primapoints(0) = Array(-Silnice - Strednipas / 2, 0, -p / 100 * (Silnice + Strednipas / 2))
+			primapoints(1) = Array(-Strednipas / 2, 0, 0)
+			primapoints(2) = Array(+Strednipas / 2, 0, 0)
+			primapoints(3) = Array(Silnice2 + Strednipas / 2, 0, -p / 100 * (Silnice2 + Strednipas / 2))
+		End If
+	End If
+	Rhino.EnableRedraw vbFalse
+
+
+	
+	Surfacebase = Rhino.AddSrfPt(Array(Array(-50000, -50000, 0), Array(50000, -50000, 0), Array(50000, 50000, 0), Array(-50000, 50000, 0)))
+	Trasa2D = Rhino.ProjectCurveToSurface(Trasa3d, Surfacebase, Array(0, 0, 1))
+	SPoints = Rhino.DivideCurveEquidistant(Trasa2D(0), 1)
+	Rhino.DeleteObject Surfacebase
+	Rhino.DeleteObject Trasa2D(0)
+	
+	
+	Dim prusecik,i,pomline,alfa(1),rozdilpredchozi,rozdil,pricnyrez
+	pomline = Rhino.AddLine(Array(0, 0, -2000), Array(0, 0, 10000))
+
+	
+	Dim R,ruhelrad,zbytek
+
+
+	For i=1 To (UBound(SPoints) - 1)
+		'Zjistovani uhlu
+		alfa(0) = Rhino.Angle(SPoints(i - 1), SPoints(i))
+		alfa(1) = Rhino.Angle(SPoints(i), SPoints(i + 1))
+		rozdil = alfa(0)(0) - alfa(1)(0)
+		If rozdil > 270 Or rozdil < -270 Then
+			If rozdil > 270 Then
+				rozdil = rozdil - 360
+			Else
+				rozdil = +360 + rozdil
+			End If
+		End If
+		
+		'Urceni polomeru oblouku
+		If Vlastnosti(3) = True Then
+			If rozdil > 0.00001 Or rozdil < -0.00001 Then
+				If rozdil < 0Then
+					ruhelrad = Rhino.ToRadians(180 - rozdil) * 2
+				Else
+					ruhelrad = Rhino.ToRadians(rozdil - 180) * 2
+				End If
+				R = (2 / ruhelrad) * 10
+				zbytek = R - R \ (1)
+				If zbytek > 0.5 Then
+					R = (R \ 1 + 1) / 10
+				Else
+					R = (R \ 1) / 10
+				End If
+			Else
+				R = 20000
+			End If
+		
+			'Rozsireni
+			If R < 250 Then
+				If R < 250 And R >= 200 Then
+					Rozsireni = 0.2
+				ElseIf R < 200 And R >= 170 Then
+		
+					Rozsireni = 0.25
+				ElseIf R < 170 And R >= 141 Then
+					Rozsireni = 0.30
+				ElseIf R < 141 And R >= 125 Then
+					Rozsireni = 0.35
+				ElseIf R < 125 And R >= 110 Then
+					Rozsireni = 0.4
+				Else 
+					Rozsireni = 0.5
+				End If
+				If sirkajizdnihopasu = 2.75 Then
+					Rozsireni = Rozsireni + 0.3
+				End If
+				If sirkajizdnihopasu = 3.00 Then
+					Rozsireni = Rozsireni + 0.05
+				End If
+			End If
+		Else
+			Rozsireni = 0
+		End If
+		
+		rozdil = ((rozdil * 10000) \ 1) / 10000
+		'__________________________________
+		
+		'Urcovani pruseciku na 3D krivce po 1 metru
+		If i = 1 Then
+			Rhino.MoveObject pomline, Array(0, 0, 0), SPoints(i)
+		Else
+			Rhino.MoveObject pomline, SPoints(i - 1), SPoints(i)
+		End If
+		prusecik = Rhino.CurveCurveIntersection(Trasa3D, pomline)
+			
+		
+		If rozdil < 0.00001 And rozdil > -0.00001 Then  'PRIMA
+			pricnyrez = Rhino.AddPolyline(primapoints)
+			Rhino.MoveObject pricnyrez, Array(0, 0, 0), prusecik(0, 1)
+			Rhino.RotateObject pricnyrez, prusecik(0, 1), (alfa(0)(0) + 90)
+			If i = 1 Then
+				pricnyrez = Rhino.AddPolyline(primapoints)
+				Rhino.MoveObject pricnyrez, Array(0, 0, 0), Rhino.Curvestartpoint(Trasa3D)
+				Rhino.RotateObject pricnyrez, Rhino.Curvestartpoint(Trasa3D), (alfa(0)(0) + 90)
+			End If
+			If i = (UBound(SPoints) - 1) Then
+				pricnyrez = Rhino.AddPolyline(primapoints)
+				Rhino.MoveObject pricnyrez, Array(0, 0, 0), Rhino.Curveendpoint(Trasa3D)
+				Rhino.RotateObject pricnyrez, Rhino.Curveendpoint(Trasa3D), (alfa(0)(0) + 90)
+			End If
+			
+		Else
+			If rozdil > 0.00001 And rozdilpredchozi = rozdil Then'PRAVA		
+				'Profil body
+				If Vlastnosti(0) = True Then
+					If Strednipas = 0 Then
+						Obloukpoints(0) = Array(-(Silnice + krajnicesirka) - Rozsireni, 0, (-pmax / 100 * (Silnice + rozsireni) + (-8 / 100 * krajnicesirka)))
+						Obloukpoints(1) = Array(-Silnice - Rozsireni, 0, (-pmax / 100 * (Silnice + Rozsireni)))
+						Obloukpoints(2) = Array(0, 0, 0)
+						Obloukpoints(3) = Array(+Silnice2 + Rozsireni, 0, (+pmax / 100 * (Silnice2 + Rozsireni)))
+						Obloukpoints(4) = Array(+Silnice2 + krajnicesirka + Rozsireni, 0, (+pmax / 100 * (Silnice2 + Rozsireni) + (-8 / 100 * krajnicesirka)))
+					Else
+						Obloukpoints(0) = Array(-((Silnice + Strednipas / 2) + krajnicesirka) - (2 * Rozsireni), 0, (-pmax / 100 * ((Silnice + Strednipas / 2) + (2 * Rozsireni)) + (-8 / 100 * krajnicesirka)))
+						Obloukpoints(1) = Array(-(Silnice + Strednipas / 2) - (2 * Rozsireni), 0, (-pmax / 100 * ((Silnice + Strednipas / 2) + (2 * Rozsireni))))
+						Obloukpoints(2) = Array(-Strednipas / 2, 0, 0)
+						Obloukpoints(3) = Array(+Strednipas / 2, 0, 0)
+						Obloukpoints(4) = Array(+(Silnice2 + Strednipas / 2) + (2 * Rozsireni), 0, (+pmax / 100 * ((Silnice2 + Strednipas / 2) + (2 * Rozsireni))))
+						Obloukpoints(5) = Array(+(Silnice2 + Strednipas / 2 + krajnicesirka) + (2 * Rozsireni), 0, (+pmax / 100 * ((Silnice2 + Strednipas / 2) + (2 * Rozsireni)) + (-8 / 100 * krajnicesirka)))
+					End If
+				Else
+					If Strednipas = 0 Then
+						Obloukpoints(0) = Array(-Silnice - Rozsireni, 0, (-pmax / 100 * (Silnice + Rozsireni)))
+						Obloukpoints(1) = Array(0, 0, 0)
+						Obloukpoints(2) = Array(+Silnice2 + Rozsireni, 0, (+pmax / 100 * (Silnice2 + Rozsireni)))
+					Else
+						Obloukpoints(0) = Array(-(Silnice + Strednipas / 2) - (2 * Rozsireni), 0, (-pmax / 100 * ((Silnice + Strednipas / 2) + (2 * Rozsireni))))
+						Obloukpoints(1) = Array(-Strednipas / 2, 0, 0)
+						Obloukpoints(2) = Array(+Strednipas / 2, 0, 0)
+						Obloukpoints(3) = Array(+(Silnice2 + Strednipas / 2) + (2 * Rozsireni), 0, (+pmax / 100 * ((Silnice2 + Strednipas / 2) + (2 * Rozsireni))))
+					End If
+				End If
+				
+				pricnyrez = Rhino.AddPolyline(obloukpoints)
+				Rhino.MoveObject pricnyrez, Array(0, 0, 0), prusecik(0, 1)
+				Rhino.RotateObject pricnyrez, prusecik(0, 1), (alfa(0)(0) + 90)
+				Rozsireni = 0
+				
+			ElseIf rozdil < -0.00001 And rozdilpredchozi = rozdil Then'LEVA
+						
+				'Profil body
+				If Vlastnosti(0) = True Then
+					If Strednipas = 0 Then
+						Obloukpoints(0) = Array(-(Silnice + krajnicesirka) - Rozsireni, 0, (pmax / 100 * (Silnice + rozsireni) + (-8 / 100 * krajnicesirka)))
+						Obloukpoints(1) = Array(-Silnice - Rozsireni, 0, (pmax / 100 * (Silnice + Rozsireni)))
+						Obloukpoints(2) = Array(0, 0, 0)
+						Obloukpoints(3) = Array(+Silnice2 + Rozsireni, 0, (-pmax / 100 * (Silnice2 + Rozsireni)))
+						Obloukpoints(4) = Array(+Silnice2 + krajnicesirka + Rozsireni, 0, (-pmax / 100 * (Silnice2 + Rozsireni) + (-8 / 100 * krajnicesirka)))
+					Else
+						Obloukpoints(0) = Array(-((Silnice + Strednipas / 2) + krajnicesirka) - (2 * Rozsireni), 0, (pmax / 100 * ((Silnice + Strednipas / 2) + (2 * Rozsireni)) + (-8 / 100 * krajnicesirka)))
+						Obloukpoints(1) = Array(-(Silnice + Strednipas / 2) - (2 * Rozsireni), 0, (pmax / 100 * ((Silnice + Strednipas / 2) + (2 * Rozsireni))))
+						Obloukpoints(2) = Array(-Strednipas / 2, 0, 0)
+						Obloukpoints(3) = Array(+Strednipas / 2, 0, 0)
+						Obloukpoints(4) = Array(+(Silnice2 + Strednipas / 2) + (2 * Rozsireni), 0, (-pmax / 100 * ((Silnice2 + Strednipas / 2) + (2 * Rozsireni))))
+						Obloukpoints(5) = Array(+(Silnice2 + Strednipas / 2 + krajnicesirka) + (2 * Rozsireni), 0, (-pmax / 100 * ((Silnice2 + Strednipas / 2) + (2 * Rozsireni)) + (-8 / 100 * krajnicesirka)))
+					End If
+				Else
+					If Strednipas = 0 Then
+						Obloukpoints(0) = Array(-Silnice - Rozsireni, 0, (pmax / 100 * (Silnice + Rozsireni)))
+						Obloukpoints(1) = Array(0, 0, 0)
+						Obloukpoints(2) = Array(+Silnice2 + Rozsireni, 0, (-pmax / 100 * (Silnice2 + Rozsireni)))
+					Else
+						Obloukpoints(0) = Array(-(Silnice + Strednipas / 2) - (2 * Rozsireni), 0, (pmax / 100 * ((Silnice + Strednipas / 2) + (2 * Rozsireni))))
+						Obloukpoints(1) = Array(-Strednipas / 2, 0, 0)
+						Obloukpoints(2) = Array(+Strednipas / 2, 0, 0)
+						Obloukpoints(3) = Array(+(Silnice2 + Strednipas / 2) + (2 * Rozsireni), 0, (-pmax / 100 * ((Silnice2 + Strednipas / 2) + (2 * Rozsireni))))
+					End If
+				End If
+				pricnyrez = Rhino.AddPolyline(obloukpoints)
+				Rhino.MoveObject pricnyrez, Array(0, 0, 0), prusecik(0, 1)
+				Rhino.RotateObject pricnyrez, prusecik(0, 1), (alfa(0)(0) + 90)
+				Rozsireni = 0
+			Else
+			End If
+		End If
+		rozdilpredchozi = rozdil
+	Next
+	Rhino.DeleteObject pomline
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.EnableRedraw vbTrue
+End Sub

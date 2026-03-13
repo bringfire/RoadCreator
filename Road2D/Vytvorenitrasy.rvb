@@ -1,0 +1,94 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 10. září 2015 12:46:07
+
+Call Vytvorenitrasy()
+Sub Vytvorenitrasy()
+	Dim Trasa,VysTrasa,Pocatek,Srovhladina
+
+	'Urceni zakladnich parametru
+	If Rhino.IsLayer("TEREN") Then
+		Rhino.LayerVisible "TEREN", False
+	End If
+	Trasa = Rhino.GetObject("Vyber smerove vedeni trasy", 4)
+	If IsNull(Trasa) Then
+		Rhino.Print("Nevybral jste trasu")
+		Exit Sub	
+	End If
+	
+	VysTrasa = Rhino.GetObject("Vyber niveletu trasy", 4)
+	If IsNull(VysTrasa) Then
+		Rhino.Print("Nevybral jste niveletu trasy")
+		Exit Sub	
+	End If
+	
+	Pocatek = Rhino.GetPoint("Urči pocatek grafu výškového polygonu")
+	If IsNull(Pocatek) Then
+		Rhino.Print("Nevybral jste pocatek grafu vyskoveho polygonu")
+		Exit Sub	
+	End If
+	
+	
+	Srovhladina = Rhino.GetReal("urči hodnotu srovnavaci hladiny")
+	If IsNull(Srovhladina) Then
+		Rhino.Print("Neurcil jste pocatek srovnavaci hladiny")
+		Exit Sub	
+	End If
+	
+	
+	Dim SPoints,VPoints(),TrasaPoints(),i,SmerTrasa,Plane,PomLine,Length,VPointpoms(),Trasahotovo
+	
+	'Body smeroveho vedeni
+	Rhino.EnableRedraw vbFalse
+	Plane = Rhino.AddPlaneSurface(Rhino.WorldXYPlane, 1000000.0, 1000000.0)
+	Rhino.MoveObject Plane, Array(0, 0, 0), Array(-500000, -500000, 0)
+	SmerTrasa = Rhino.ProjectCurveToSurface(Trasa, Plane, Array(0, 0, 1))
+	Rhino.DeleteObject Plane
+	Rhino.Print "Pracuji"
+	SPoints = Rhino.DivideCurveEquidistant(SmerTrasa(0), 1)
+	
+	
+	'Body vyskoveho vedeni
+	ReDim VPoints(Ubound(SPoints))
+	ReDim VPointpoms(Ubound(SPoints))
+	ReDim TrasaPoints(Ubound(SPoints))
+	Pomline = Rhino.AddLine(Pocatek, Array(Pocatek(0), Pocatek(1) + 10000, Pocatek(2)))
+	i = 0
+	Do While i < (Ubound(SPoints))
+		VPointpoms(i) = Rhino.CurveCurveIntersection(PomLine, VysTrasa)
+		VPoints(i) = VPointpoms(i)(0, 1)
+		i = i + 1
+		Rhino.MoveObject PomLine, Pocatek, Array(Pocatek(0) + 1, Pocatek(1), Pocatek(2))
+	Loop
+	VPoints(i) = Rhino.Curveendpoint(VysTrasa)
+	Rhino.DeleteObject Pomline
+	'Vytvoreni trasy
+	i = 0
+	Do While i =< (Ubound(SPoints))
+		TrasaPoints(i) = Array(SPoints(i)(0), SPoints(i)(1), Srovhladina + (VPoints(i)(1) - Pocatek(1)) / 10)
+		'Rhino.AddPoint TrasaPoints(i)
+		i = i + 1
+	Loop
+	
+	If Rhino.IsLayer("Trasa") Then
+		Rhino.CurrentLayer("Trasa")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Trasa", RGB(255, 0, 0))
+		Rhino.CurrentLayer("Trasa")
+	End If
+	
+	Trasahotovo = Rhino.AddInterpCurve(TrasaPoints)
+	Rhino.Print"Byla vytvorena 3D trasa"
+	Rhino.ObjectName Trasahotovo, "Trasa"
+	Rhino.ObjectColor Trasahotovo, RGB(255, 0, 0)
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.Print "Byla vytvorena trasa"
+	Rhino.EnableRedraw vbTrue
+	
+End Sub

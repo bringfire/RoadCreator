@@ -1,0 +1,130 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 28. dubna 2015 10:34:35
+Call MagiccopymoreMesh()
+
+Function Joinmore(objects)
+	Dim pieces,pomoc
+	Rhino.EnableRedraw vbFalse
+	If (Ubound(Objects)) = 0Then
+		pomoc = Rhino.CopyObject(objects(0), Array(0, 0, 0), Array(0, 0, 0))
+		joinmore = pomoc
+	Else
+		For Each pieces In objects
+			Call Rhino.Command("_SelID " & pieces & "_Enter", 0)
+		Next
+		Call Rhino.Command("_Join", 0)
+		pomoc = Rhino.LastCreatedObjects
+		joinmore = pomoc(0)
+	End If
+	Rhino.UnselectAllObjects
+	Rhino.EnableRedraw vbTrue
+End Function
+
+
+Sub MagiccopymoreMesh()
+	'Ziskani objektu od uzivatele pro kopirovani
+	Dim ntree,pieces,Objekt(),Base(),Scale(),teren,p
+	
+
+	teren = Rhino.GetObjects("Vyber terén", 32)
+	If IsNull(teren) Then
+		Rhino.Print "Nevybral jste terén"
+		Exit Sub
+	End If
+	If Rhino.IsLayer("Stromy databaze") Then
+		Rhino.LayerLocked "Stromy databaze", False
+		Rhino.LayerVisible "Stromy databaze", True
+		Rhino.Print" Byla zpristupnena databaze stromu a keru"
+	End If
+	ntree = Rhino.GetReal("Zadej pocet stromu ktere chces kopirovat", 2)
+	If IsNull(ntree) Then
+		Rhino.Print "Nezadak jste pocet stromu"
+		Exit Sub
+	End If
+	If (Ubound(Teren)) > 0Then
+		For Each pieces In Teren
+			rhino.CopyObject pieces, Array(0, 0, 0), Array(0, 0, 0)
+		Next
+		
+	End If
+
+	
+	p = 0
+	ReDim Objekt(ntree-1)
+	ReDim Base(ntree-1)
+	ReDim Scale(ntree-1)
+	
+	Do While p < ntree
+		Objekt(p) = Rhino.Getobjects("Vyber " & CStr(p + 1) & ". objekt pro kopirovani")
+		If IsNull(Objekt(p)) Then
+			Rhino.Print "Nevybral jste objekt pro kopirovani"
+			If Rhino.IsLayer("Stromy databaze") Then
+				Rhino.LayerLocked "Stromy databaze", True
+				Rhino.LayerVisible "Stromy databaze", False
+			End If
+			Exit Sub
+		End If
+		
+		Base(p) = Rhino.GetPoint("Vyber " & CStr(p + 1) & ". pocatek kopirovani")
+		If IsNull(Base(p)) Then
+			Rhino.Print "Nevybral jste pocatek"
+			If Rhino.IsLayer("Stromy databaze") Then
+				Rhino.LayerLocked "Stromy databaze", True
+				Rhino.LayerVisible "Stromy databaze", False
+			End If
+			Exit Sub
+		End If
+		
+		Scale(p) = Rhino.GetReal("Zadej rozsah zmeny meřítka v %", 0)
+		
+		p = p + 1
+		
+	Loop
+	
+	
+	
+	'Kopirovani objektu s natocenim'
+	Dim terenpomoc
+	Terenpomoc = joinmore(teren)
+	Dim Point, i, copy, randrotate, randscale,randtree
+	i = 0
+	If Rhino.IsLayer("Stromy") Then
+		Rhino.CurrentLayer("Stromy")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Stromy", RGB(0, 190, 0))
+		Rhino.CurrentLayer("Stromy")
+	End If
+	Do While i = 0
+	
+		Point = Rhino.GetPointOnMesh(Terenpomoc, "Vyber místo pro zkopírování")
+
+		
+		If  IsNull(Point) Then
+			Rhino.DeleteObject Terenpomoc
+			If Rhino.IsLayer("Default") Then
+				Rhino.CurrentLayer("Default")
+			Else 
+				Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+				Rhino.CurrentLayer("Default")
+			End If
+			If Rhino.IsLayer("Stromy databaze") Then
+				Rhino.LayerLocked "Stromy databaze", True
+				Rhino.LayerVisible "Stromy databaze", False
+			End If
+			Exit Sub
+		End If
+		'Nahodne cislo pro pootoceni objektu'
+		Randomize
+		randtree = ((ntree - 1) * Rnd) \ 1
+		'Rhino.Print "randtree " & CStr(randtree)
+		copy = Rhino.CopyObjects(Objekt(randtree), Base(randtree), Point)
+		Rhino.ObjectLayer copy, "Stromy"
+		randrotate = ((360) * Rnd )
+		Rhino.RotateObjects copy, Point, randrotate
+		'Nahodne cislo pro pootoceni objektu'
+		randscale = (((Scale(randtree) ) * Rnd + 1) - (Scale(randtree) / 2)) / 100 + 1
+		Rhino.ScaleObjects copy, Point, array(randscale, randscale, randscale)
+	Loop
+End Sub

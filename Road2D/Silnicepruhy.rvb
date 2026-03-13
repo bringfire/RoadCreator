@@ -1,0 +1,152 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 3. března 2016 17:07:19
+
+Call Silnicnypruhy()
+Function LevaPrava(curve, point)
+	Dim  t, pt,line,kruznice,kruzniceplocha,prunik,alfa,pomline,distance(1)
+	t = Rhino.CurveClosestPoint(curve, point)
+	If Not IsNull(t) Then
+		pt = Rhino.EvaluateCurve(curve, t)
+	End If
+	line = Rhino.AddLine(Array(0, 0.1, 0), Array(0, -0.1, 0))
+	Rhino.MoveObject line, Array(0, 0, 0), pt
+	
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruznice = Rhino.AddCircle(pt, 0.1)
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik = Rhino.CurveSurfaceIntersection(curve, Kruzniceplocha)
+	alfa = Rhino.Angle(pt, prunik(0, 1))
+	Rhino.RotateObjects line, pt, 180 + alfa(0)
+	
+	distance(0) = Rhino.Distance(Rhino.CurveStartPoint(line), point)
+	distance(1) = Rhino.Distance(Rhino.CurveEndPoint(line), point)
+	
+	If distance(0) > distance(1) Then
+		LevaPrava = 0
+	Else
+		LevaPrava = 180
+	End If
+	Rhino.DeleteObject Kruznice
+	Rhino.DeleteObject Kruzniceplocha
+	Rhino.DeleteObject line
+	Rhino.Deleteobject pomline
+	
+End Function
+
+Sub Silnicnypruhy()
+	
+	Dim Trasa3D,direction,sirka,p,pmax
+	
+	Trasa3D = Rhino.GetObject("Vyber krivku kde chces vytvorit silnicni pruh", 4)
+	If IsNull(Trasa3D) Then
+		Rhino.Print("Nevybral jste krivku")
+		Exit Sub	
+	End If
+	
+	direction = Rhino.GetPoint("Urci stranu")
+	If IsNull(direction) Then
+		Rhino.Print("Neurcil si smer")
+		Exit Sub	
+	End If
+	
+	sirka = Rhino.GetReal("Urci sirku silnicniho pruhu", 3, 0.1, 20)
+	If IsNull(sirka) Then
+		Rhino.Print("Neurcil jste sirku")
+		Exit Sub	
+	End If
+	
+	p = Rhino.GetReal("Urci pricny sklon v prime", 2.5, 2, 4)
+	If IsNull(p) Then
+		Rhino.Print("Neurcil jste pricny sklon v prime")
+		Exit Sub	
+	End If
+	
+	pmax = Rhino.GetReal("Urci pricny sklon v oblouku", 4, 4, 20)
+	If IsNull(pmax) Then
+		Rhino.Print("Neurcil jste pricny sklon v oblouku")
+		Exit Sub	
+	End If
+	
+	
+	Dim Moznostivyberu,Vychozi,Vlastnosti,Oprava
+	Moznostivyberu = Array("Prohodit", "Ne", "Ano")
+	Vychozi = Array(False)
+	Vlastnosti = Rhino.GetBoolean("Prohodit strany", Moznostivyberu, Vychozi)
+	If Vlastnosti(0) = True Then
+		Oprava = 1
+	Else
+		Oprava = -1
+	End If
+	
+	Rhino.EnableRedraw vbFalse
+	Dim Surfacebase,Trasa2D,Spoints,strana
+	
+	Surfacebase = Rhino.AddSrfPt(Array(Array(-50000, -50000, 0), Array(50000, -50000, 0), Array(50000, 50000, 0), Array(-50000, 50000, 0)))
+	Trasa2D = Rhino.ProjectCurveToSurface(Trasa3d, Surfacebase, Array(0, 0, 1))
+	SPoints = Rhino.DivideCurveEquidistant(Trasa2D(0), 1)
+	Rhino.DeleteObject Surfacebase
+	Rhino.DeleteObject Trasa2D(0)
+	
+	Strana = LevaPrava(Trasa3D, direction)
+	
+	Dim prusecik,i,pomline,alfa(1),rozdilpredchozi,rozdil,pricnyrez
+	pomline = Rhino.AddLine(Array(0, 0, -2000), Array(0, 0, 10000))
+
+	For i=1 To (UBound(SPoints) - 1)
+		'Zjistovani uhlu
+		alfa(0) = Rhino.Angle(SPoints(i - 1), SPoints(i))
+		alfa(1) = Rhino.Angle(SPoints(i), SPoints(i + 1))
+		rozdil = alfa(0)(0) - alfa(1)(0)
+		If rozdil > 270 Or rozdil < -270 Then
+			If rozdil > 270 Then
+				rozdil = rozdil - 360
+			Else
+				rozdil = +360 + rozdil
+			End If
+		End If
+		rozdil = ((rozdil * 100) \ 1) / 100
+		Rhino.Print "rozdil" & CStr(rozdil) 
+		
+		'Urceni pruseciku
+		If i = 1 Then
+			Rhino.MoveObject pomline, Array(0, 0, 0), SPoints(i)
+		Else
+			Rhino.MoveObject pomline, SPoints(i - 1), SPoints(i)
+		End If
+		prusecik = Rhino.CurveCurveIntersection(Trasa3D, pomline)
+		rozdil = ((rozdil * 1000) \ 1) / 1000
+		If rozdil < 0.01 And rozdil > -0.01 Then'PRIMA
+			pricnyrez = Rhino.Addline(Array(0, 0, 0), Array(0, sirka, -sirka * p / 100))
+			Rhino.MoveObject pricnyrez, Array(0, 0, 0), prusecik(0, 1)
+			Rhino.RotateObject pricnyrez, prusecik(0, 1), (alfa(0)(0) + Strana + 180)
+			If i = 1 Then
+				pricnyrez = Rhino.Addline(Array(0, 0, 0), Array(0, sirka, -sirka * p / 100))
+				Rhino.MoveObject pricnyrez, Array(0, 0, 0), Rhino.Curvestartpoint(Trasa3D)
+				Rhino.RotateObject pricnyrez, Rhino.Curvestartpoint(Trasa3D), (alfa(0)(0) + Strana + 180)
+			End If
+			If i = (UBound(SPoints) - 1) Then
+				pricnyrez = Rhino.Addline(Array(0, 0, 0), Array(0, sirka, -sirka * p / 100))
+				Rhino.MoveObject pricnyrez, Array(0, 0, 0), Rhino.Curveendpoint(Trasa3D)
+				Rhino.RotateObject pricnyrez, Rhino.Curveendpoint(Trasa3D), (alfa(0)(0) + Strana + 180)
+			End If
+		Else
+			If rozdil > 0.01 And rozdilpredchozi = rozdil Then'LEVA
+				pricnyrez = Rhino.Addline(Array(0, 0, 0), Array(0, sirka, Oprava * sirka * pmax / 100))
+				Rhino.MoveObject pricnyrez, Array(0, 0, 0), prusecik(0, 1)
+				Rhino.RotateObject pricnyrez, prusecik(0, 1), (alfa(0)(0) + Strana + 180)
+			ElseIf rozdil < -0.01 And rozdilpredchozi = rozdil Then 'PRAVA
+				pricnyrez = Rhino.Addline(Array(0, 0, 0), Array(0, sirka, -Oprava * sirka * pmax / 100))
+				Rhino.MoveObject pricnyrez, Array(0, 0, 0), prusecik(0, 1)
+				Rhino.RotateObject pricnyrez, prusecik(0, 1), (alfa(0)(0) + Strana + 180)
+			Else
+			End If
+		End If
+	
+		rozdilpredchozi = rozdil
+	Next
+	Rhino.Deleteobject pomline
+	Rhino.EnableRedraw vbTrue
+End Sub

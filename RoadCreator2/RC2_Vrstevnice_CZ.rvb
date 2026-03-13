@@ -1,0 +1,179 @@
+﻿Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 3. dubna 2015 21:28:47
+
+Call RC2_Vrstevnice_CZ()
+Sub RC2_Vrstevnice_CZ()
+
+	
+	Dim teren,LayerTeren
+	LayerTeren = "3D model terénu"
+	teren = Rhino.GetObject("Vyber terén pro tvorbu vrstevnic", 56)
+	If IsNull(teren) Then
+		Rhino.Print "Nebyl vybrán terén"
+		Exit Sub
+	Else
+		Rhino.AddLayer "Terén", RGB(0, 0, 0)
+		If Not Rhino.IsLayer(LayerTeren) Then
+			Rhino.AddLayer LayerTeren, RGB(0, 0, 0)
+		End If
+		Rhino.ObjectLayer teren, LayerTeren
+		Rhino.ParentLayer LayerTeren, "Terén"
+		Rhino.ObjectName teren, LayerTeren
+	End If
+	
+	'ROZMERY TERNU
+	Dim rozmery(1),Bbox,Min,Max
+	Bbox = Rhino.BoundingBox(teren)
+	rozmery(0) = Bbox(0)(0) - Bbox(6)(0)
+	rozmery(1) = Bbox(0)(1) - Bbox(6)(1)
+	Min = Round(Bbox(0)(2), 3)
+	Max = Round(Bbox(6)(2), 3)
+	
+	'VYKRESLOVANI
+	Rhino.EnableRedraw vbFalse
+	Rhino.Print "Pracuji"
+	
+	'TVORBA A UMISTENI PLOCHY
+	Dim plocha,startvyska
+	If Rhino.IsMesh(teren) = True Then
+		plocha = Rhino.AddMesh(Array(Bbox(0), Bbox(1), Bbox(2), Bbox(3)), Array(Array(0, 1, 2, 0), Array(3, 2, 0, 3)))
+	Else
+		plocha = Rhino.AddSrfPt(Array(Bbox(0), Bbox(1), Bbox(2), Bbox(3)))
+	End If
+	
+	startvyska = min \ 10
+	If min < 0 Then
+		startvyska = (startvyska - 1) * 10
+	Else
+		startvyska = startvyska * 10
+	End If
+	Rhino.Moveobject plocha, Array(0, 0, Bbox(0)(2)), Array(0, 0, startvyska)
+	
+	'TVORBA VRSTEV
+	Dim LayerHV,Layer5V,Layer2V,LayerV
+	LayerV = "Vrstevnice"
+	LayerHV = "Hlavní vrstevnice"
+	Layer5V = "Vrstevnice 5m"
+	Layer2V = "Vrstevnice 2m"
+	
+	If Not Rhino.IsLayer(LayerV) Then
+		Rhino.AddLayer LayerV, RGB(200, 100, 0)
+	End If
+	
+	If Not Rhino.IsLayer(LayerHV) Then
+		Rhino.AddLayer LayerHV, RGB(255, 191, 0)
+	End If
+	
+	If Not Rhino.IsLayer(Layer5V) Then
+		Rhino.AddLayer Layer5V, RGB(90, 90, 90)
+	End If
+	
+	If Not Rhino.IsLayer(Layer2V) Then
+		Rhino.AddLayer Layer2V, RGB(90, 60, 90)
+	End If
+	
+	'PRVNI VRSTEVNICE
+	Dim vrstevnice,intersection,h
+	h = 0
+	
+	If Rhino.IsMesh(teren) = True Then
+		vrstevnice = Rhino.MeshMeshIntersection(teren, plocha)
+	Else
+		vrstevnice = Rhino.IntersectBreps(teren, plocha)
+	End If
+
+	Do While Isnull(vrstevnice)
+		Rhino.MoveObject plocha, Array(0, 0, 0), Array(0, 0, 1)
+		h = h + 1
+		If Rhino.IsMesh(teren) = True Then
+			vrstevnice = Rhino.MeshMeshIntersection(teren, plocha)
+		Else
+			vrstevnice = Rhino.IntersectBreps(teren, plocha)
+		End If
+	Loop
+	
+	'MESH VRSTEVNICE
+	Dim a,line
+
+	
+	'ZARAZENI VRSTEVNICE
+
+	
+	'OSTATNI VRSTEVNICE
+	Do While Not isnull(vrstevnice)
+		'MESH VRSTEVNICE
+		If Rhino.IsMesh(teren) = True Then
+			a = 0
+			ReDim line(Ubound(Vrstevnice))
+			Do While a <= Ubound(vrstevnice)
+				line(a) = Rhino.AddPolyline(vrstevnice(a))
+				Rhino.ObjectName line, "Pomocnynazev"	
+				a = a + 1
+			Loop
+			vrstevnice = line
+		End If
+		
+		For Each line In vrstevnice
+			If (h Mod 10 ) = 0 Then
+				Rhino.ObjectLayer line, LayerHV
+				Rhino.ObjectName line, "RC_" + LayerHV
+			Else
+				If(h Mod 5) = 0 Then
+					Rhino.ObjectLayer line, Layer5V
+					Rhino.ObjectName line, "RC_" + Layer5V
+				Else
+					If(h Mod 2) = 0 Then
+						Rhino.ObjectLayer line, Layer2V
+						Rhino.ObjectName line, "RC_" + Layer2V
+					Else
+						Rhino.DeleteObject line
+					End If
+				End If
+			End If
+		Next
+			
+		
+		'HLEDANI DALSI VRSTEVNICE
+		Rhino.MoveObject plocha, Array(0, 0, 0), Array(0, 0, 1)
+		h = h + 1
+		If Rhino.IsMesh(teren) = True Then
+			vrstevnice = Rhino.MeshMeshIntersection(teren, plocha)
+		Else
+			vrstevnice = Rhino.IntersectBreps(teren, plocha)
+	
+		End If
+	Loop
+	Rhino.DeleteObject plocha
+	
+	'VRSTVY UPRAVY
+	Rhino.ParentLayer  LayerHV, LayerV
+	Rhino.ParentLayer  Layer5V, LayerV
+	Rhino.LayerVisible Layer5V, False
+	Rhino.ParentLayer  Layer2V, LayerV
+	Rhino.ParentLayer  LayerV, "Terén"
+	
+	Rhino.LayerLocked LayerV, True
+	Rhino.LayerLocked LayerHV, True
+	Rhino.LayerLocked Layer5V, True
+	Rhino.LayerLocked Layer2V, True
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	
+	'VYPIS VLASTNOSTI
+	Rhino.Print"SPECIFIKACE TERÉNU"
+	If Rhino.IsMesh(teren) = True Then
+		Rhino.Print"Typ terénu: Mesh"
+	Else
+		Rhino.Print"Typ terénu: NURBS surface"
+	End If
+	Rhino.Print"Minimální výška: " + CStr(Min) + " m"
+	Rhino.Print"Maximální výška: " + CStr(Max) + " m"
+	Rhino.EnableRedraw vbTrue
+End Sub

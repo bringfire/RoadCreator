@@ -1,0 +1,177 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 25. února 2016 12:29:37
+
+Call Svahyprofily()
+Function DoSplit(object, cutter)
+	Dim cmd
+	cmd = "_Split _SelID " & object & " _Enter _SelID " & cutter & " _Enter"
+	Call Rhino.Command(cmd, 0)
+	DoSplit = Rhino.LastCreatedObjects
+	
+End Function
+
+Sub Svahyprofily()
+	
+	Dim diferent,Teren, Trasa,bod(1),pricnyrez1(1),pricnyrez2(1),pricnyrezpoints(),beta1,sklonnasep,sklonvykop,prunik(1),kruznice,kruzniceplocha,pomline,beta2
+	diferent = 180
+	If Rhino.IsLayer("TEREN") Then
+		Rhino.LayerLocked "TEREN", False
+	End If
+
+	Teren = Rhino.GetObject("Vyber teren", 24)
+	If IsNull(Teren) Then
+		Rhino.Print("Nevybral jste teren")
+		Exit Sub	
+	End If
+
+	Trasa = Rhino.GetObject("Vyber hranu na ktere chces vytvorit svah", 4)
+	If IsNull(Trasa) Then
+		Rhino.Print("Nevybral jste hranu")
+		Exit Sub	
+	End If
+	
+	If Rhino.IsLayer("RezTerenuSvahy") Then
+		Rhino.CurrentLayer("RezTerenuSvahy")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("RezTerenuSvahy", RGB(150, 75, 0))
+		Rhino.CurrentLayer("RezTerenuSvahy")
+	End If
+	
+	If Rhino.IsLayer("Svahy") Then
+		Rhino.CurrentLayer("Svahy")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Svahy", RGB(150, 75, 0))
+		Rhino.CurrentLayer("Svahy")
+	End If
+	
+	sklonnasep = Rhino.GetReal("Zadej sklon naspu (1:n):", 1.75)
+	If IsNull(sklonnasep) Then
+		Rhino.Print("Nezadal si sklon")
+		Exit Sub	
+	End If
+	
+	sklonvykop = Rhino.GetReal("Zadej sklon vykopu(1:n):", 1.75)
+	If IsNull(sklonvykop) Then
+		Rhino.Print("Nezadal si sklon")
+		Exit Sub	
+	End If
+	
+	Dim Moznostivyberu,Vychozi,Vlastnosti
+	Moznostivyberu = Array("Prikopy", "Ne", "Ano")
+	Vychozi = Array(True)
+	Vlastnosti = Rhino.GetBoolean("Vlastnosti svahu", Moznostivyberu, Vychozi)
+	Dim hloubkaprikopu,sirkaprikopu
+	If Vlastnosti(0) = True Then
+		hloubkaprikopu = Rhino.GetReal("Zadej hloubku prikopu", 0.4, 0.3, 2)
+		sirkaprikopu = Rhino.GetReal("Zadej sirku prikopu", 0.5, 0.2, 2)
+	End If
+	
+	'Urceni pruniku1
+	bod(0) = Rhino.CurveStartPoint(Trasa)
+	Kruznice = Rhino.AddCircle(bod(0), 0.1)
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik(0) = Rhino.CurveSurfaceIntersection(Trasa, Kruzniceplocha)
+	Rhino.DeleteObject(Kruznice)
+	Rhino.DeleteObject(Pomline)
+	Rhino.DeleteObject(Kruzniceplocha)
+	
+	bod(1) = Rhino.CurveEndPoint(Trasa)
+	Kruznice = Rhino.AddCircle(bod(1), 0.1)
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik(1) = Rhino.CurveSurfaceIntersection(Trasa, Kruzniceplocha)
+	Rhino.DeleteObject(Kruznice)
+	Rhino.DeleteObject(Pomline)
+	Rhino.DeleteObject(Kruzniceplocha)
+	
+	'Svahy profil
+	If Vlastnosti(0) = True Then
+		ReDim pricnyrezpoints(3)
+		pricnyrezpoints(0) = Array(0, 0, 0)
+		pricnyrezpoints(1) = Array(hloubkaprikopu * sklonnasep, 0, -hloubkaprikopu)
+		pricnyrezpoints(2) = Array(hloubkaprikopu * sklonnasep + sirkaprikopu, 0, -hloubkaprikopu)
+		pricnyrezpoints(3) = Array(hloubkaprikopu * sklonnasep + sirkaprikopu + 10 * sklonvykop, 0, 12)
+	Else
+		ReDim pricnyrezpoints(1)
+		pricnyrezpoints(0) = Array(0, 0, 0)
+		pricnyrezpoints(1) = Array(10 * sklonvykop, 0, 10)
+	End If
+	beta1 = Rhino.Angle(Array(bod(0)(0), bod(0)(1), 0), Array(prunik(0)(0, 1)(0), prunik(0)(0, 1)(1), 0))
+	beta2 = Rhino.Angle(Array(bod(1)(0), bod(1)(1), 0), Array(prunik(1)(0, 1)(0), prunik(1)(0, 1)(1), 0))
+	
+	pricnyrez1(0) = Rhino.Addpolyline(pricnyrezpoints)
+	pricnyrez1(1) = Rhino.Addline(Array(0, 0, 0), Array(10 * sklonnasep, 0, -10))
+	Rhino.MoveObjects pricnyrez1, Array(0, 0, 0), bod(0)
+	Rhino.RotateObjects pricnyrez1, bod(0), (beta1(0) + 270 + diferent)
+	
+	pricnyrez2(0) = Rhino.Addpolyline(pricnyrezpoints)
+	pricnyrez2(1) = Rhino.Addline(Array(0, 0, 0), Array(10 * sklonnasep, 0, -10))
+	Rhino.MoveObjects pricnyrez2, Array(0, 0, 0), bod(1)
+	Rhino.RotateObjects pricnyrez2, bod(1), (beta2(0) + 90 + diferent)
+	
+	Dim svahy(1)
+	Svahy(0) = Rhino.AddSweep1(Trasa, Array(pricnyrez1(0), pricnyrez2(0)))
+	Svahy(1) = Rhino.AddSweep1(Trasa, Array(pricnyrez1(1), pricnyrez2(1)))
+	
+	'bodykrivky
+	Dim curvepoints(3)
+	curvepoints(0) = Rhino.CurvePoints(Pricnyrez1(0))
+	curvepoints(1) = Rhino.CurvePoints(Pricnyrez1(1))
+	curvepoints(2) = Rhino.CurvePoints(Pricnyrez2(0))
+	curvepoints(3) = Rhino.CurvePoints(Pricnyrez2(1))
+	
+	Rhino.DeleteObjects(Array(Pricnyrez1(0), Pricnyrez1(1), Pricnyrez2(0), Pricnyrez2(1)))
+	Dim Pomlines(1),Rezterenu,bok
+	
+	If Vlastnosti(0) = True Then
+		pomlines(0) = Rhino.AddPolyline(Array(Curvepoints(0)(3), Curvepoints(0)(2), Curvepoints(0)(1), Curvepoints(1)(1)))
+		pomlines(1) = Rhino.AddPolyline(Array(Curvepoints(2)(3), Curvepoints(2)(2), Curvepoints(2)(1), Curvepoints(3)(1)))
+		bok = Rhino.AddSrfPt(Array(Curvepoints(0)(0), Curvepoints(0)(1), Curvepoints(0)(2), Curvepoints(0)(3)))
+		Rhino.ObjectLayer bok, "RezTerenuSvahy"
+		bok = Rhino.AddSrfPt(Array(Curvepoints(2)(0), Curvepoints(2)(1), Curvepoints(2)(2), Curvepoints(2)(3)))
+		Rhino.ObjectLayer bok, "RezTerenuSvahy"
+	Else
+		pomlines(0) = Rhino.AddPolyline(Array(Curvepoints(0)(1), Curvepoints(0)(0), Curvepoints(1)(1)))
+		pomlines(1) = Rhino.AddPolyline(Array(Curvepoints(2)(1), Curvepoints(2)(0), Curvepoints(3)(1)))
+	End If
+	Rezterenu = Rhino.AddSweep1(Trasa, Array(pomlines(0), pomlines(1)))
+	Rhino.DeleteObjects(Array(pomlines(1), pomlines(0)))
+	Rhino.ObjectLayer rezterenu, "RezTerenuSvahy"
+	
+	'Delenisvahu
+	Dim split
+	split = Dosplit(Svahy(0)(0), Teren)
+	If Not isnull(split) Then 
+		If Vlastnosti(0) = True Then
+			Rhino.DeleteObject split(0)
+		Else
+			Rhino.DeleteObject split(Ubound(Split))
+		End If
+	Else
+		Rhino.DeleteObject svahtrasa1(0)
+	End If
+	
+	split = Dosplit(svahy(1)(0), Teren)
+	If Not isnull(split) Then 
+		Rhino.DeleteObject split(0)
+	Else
+		Rhino.DeleteObject naseptrasa2(0)
+	End If
+	
+	Rhino.LayerVisible "RezTerenuSvahy", False
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 190, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	
+
+	
+End Sub

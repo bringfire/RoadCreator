@@ -1,0 +1,105 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 10. března 2016 14:04:31
+
+Call RC_Tecnovypolygon_CZ()
+Sub RC_Tecnovypolygon_CZ()
+
+	Dim version,ts
+	version = Rhino.ExeVersion
+	ts = 1
+	If version = 6 Then
+		ts = 1000
+	End If
+	
+	'PRIPRAVA
+	Dim krivka,krivkapoints
+	Rhino.CurrentView "Shora"
+	Rhino.CurrentView "Top"
+	If Rhino.IsLayer("3D model terénu") Then
+		Rhino.LayerVisible "3D model terénu", False
+	End If
+	Rhino.ProjectOsnaps True
+	Rhino.Osnap False
+	krivkapoints = Rhino.GetPolyline("Vytvoř tečnový polygon")
+	Rhino.Osnap True
+	If isnull(krivkapoints)  Then
+		Rhino.Print "Nebyl zadán tečnový polygon"
+		Exit Sub
+	End If
+	If Ubound(krivkapoints) = 0 Then
+		Rhino.Print "Nebyl zadán tečnový polygon"
+		Exit Sub
+	End If
+	'VRSTVY
+	Rhino.EnableRedraw vbFalse
+	Dim D,L,LayerTP,LayerSilnice,LayerST,LayerSTpoints
+	LayerSTpoints = "Staničení body"
+	LayerSilnice = "Silnice_"
+	LayerTP = "Tečnový polygon"
+	LayerST = "Staničení"
+	L = 1
+	Do While D = 0
+		If Rhino.IsLayer(LayerSilnice & CStr (L)) Then
+			L = L + 1
+		Else 
+			Rhino.AddLayer LayerSilnice & CStr (L), RGB(255, 0, 0)
+			Rhino.AddLayer LayerTP, RGB(255, 0, 0)
+			Rhino.AddLayer LayerST, RGB(255, 0, 0)
+			Rhino.AddLayer LayerSTpoints, RGB(255, 0, 0)
+			Rhino.AddLayer "Legenda", RGB(255, 0, 0)
+			D = 1
+		End If
+	Loop
+	
+	Rhino.ProjectOsnaps False
+
+	'VKLADANI KRIVEK
+	Dim i
+	i = 0
+	Do While i < Ubound(krivkapoints)
+		krivka = Rhino.AddLine(krivkapoints(i), krivkapoints(i + 1))
+		Rhino.ObjectName krivka, LayerSilnice + CStr (L) + " " + Cstr(i + 1)
+		Rhino.ObjectLayer krivka, LayerTP
+		i = i + 1
+	Loop
+		
+
+
+	Rhino.ExplodeCurves krivka, True
+
+
+	'VLOZENI STARTU
+	Dim line,angle,text,bod
+	angle = Rhino.Angle(krivkapoints(0), krivkapoints(1), True)
+	line = Rhino.AddLine(Array(0, 0, 0), Array(33, 0, 0))
+	Rhino.ObjectLayer line, LayerST
+	Rhino.MoveObject line, Array(0, 0, 0), krivkapoints(0)
+	Rhino.RotateObject line, krivkapoints(0), angle(0) - 90
+	text = Rhino.AddText("ZÚ km 0,000000", Array(krivkapoints(0)(0) + 2, krivkapoints(0)(1) + 0.5, 0), 3/ts)
+	Rhino.ObjectLayer text, LayerST
+	Rhino.RotateObject text, krivkapoints(0), angle(0) - 90
+	bod = Rhino.AddPoint(krivkapoints(0))
+	Rhino.ObjectName bod, LayerSilnice + CStr(L) + " 0 R ZÚ 0.000000"
+	Rhino.ObjectLayer bod, LayerSTpoints
+	
+	
+	Rhino.LayerLocked LayerSTpoints, True
+	Rhino.ParentLayer LayerSTpoints, LayerST
+	Rhino.LayerLocked LayerST, True
+	Rhino.ParentLayer LayerST, LayerTP
+	Rhino.ParentLayer "Legenda", LayerTP
+	Rhino.ParentLayer LayerTP, LayerSilnice & CStr (L)
+	Rhino.LayerLocked "Legenda", True
+	
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.EnableRedraw vbTrue
+	
+End Sub

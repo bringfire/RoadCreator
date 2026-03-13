@@ -1,0 +1,66 @@
+﻿Option Explicit
+'Script written by <Adam Orlicky>
+'Script copyrighted by <insert company name>
+'Script version 19. března 2016 22:08:34
+
+Call ZnackaA1aZatackavpravo()
+Sub ZnackaA1aZatackavpravo()
+
+	Dim Teren,Znacka,ZnackaID,Base,Point,pointproject,copy,pointrotate	
+	ZnackaID = "A1a"
+	Base = Array(2, 2, 0)
+	
+	Teren = Rhino.GetObject("Vyber terén", 56)
+	If IsNull(Teren) Then
+		Rhino.Print "Nevybral jste terén"
+		Exit Sub
+	End If	
+	
+	Point = Rhino.GetPoint("Vyber místo umístění značky")
+	If IsNull(Point) Then
+		Rhino.Print "Nevybral jste bod pro vložení značky"
+		Exit Sub
+	Else
+		If Rhino.IsLayer("Znacky") Then
+			Rhino.CurrentLayer("Znacky")
+		Else 
+			Rhino.Print "New layer: " & Rhino.AddLayer("Znacky", RGB(0, 0, 0))
+			Rhino.CurrentLayer("Znacky")
+		End If
+	End If
+	Rhino.EnableRedraw vbFalse
+	If Rhino.IsSurface(teren) = True Then
+		pointproject = Rhino.ProjectPointToSurface(Point, Teren, Array(0, 0, 1))
+	Else
+		pointproject = Rhino.ProjectPointToMesh(Point, Teren, Array(0, 0, 1))
+	End If
+	Dim angle
+
+	If Rhino.IsLayer("DATABAZE") Then
+		Rhino.LayerLocked "DATABAZE", False
+		Rhino.LayerVisible "DATABAZE", True
+		Rhino.Print" Byla zpristupnena databaze"
+	Else
+		Rhino.Print" Databaze nebyla nalezena"
+		Exit Sub
+	End If
+	Znacka = Rhino.ObjectsByName(ZnackaID)
+	copy = Rhino.Copyobjects(Znacka, base, pointproject(0))
+	Rhino.ObjectLayer copy, "Znacky"
+	Rhino.LayerLocked "DATABAZE", True
+	Rhino.LayerVisible "DATABAZE", False
+	Rhino.EnableRedraw vbTrue
+	pointrotate = Rhino.GetPoint("Vyber uhel pro pootoceni", pointproject(0))
+	angle = Rhino.Angle(Array(pointproject(0)(0), pointproject(0)(1), 0), Array(pointrotate(0), pointrotate(1), 0))
+	Rhino.RotateObjects copy, pointproject(0), angle(0) + 90
+	Rhino.ObjectName copy, "Znacka"
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.Print"Byla vložena dopravní značka"
+	
+End Sub

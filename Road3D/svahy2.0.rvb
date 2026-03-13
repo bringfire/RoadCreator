@@ -1,0 +1,348 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 25. února 2016 12:29:37
+
+Call Svahyteren()
+
+Function DoSplit(object, cutter)
+	Dim cmd
+	cmd = "_Split _SelID " & object & " _Enter _SelID " & cutter & " _Enter"
+	Call Rhino.Command(cmd, 0)
+	DoSplit = Rhino.LastCreatedObjects
+	
+End Function
+
+Function Joinmore(objects)
+	Dim pieces
+	For Each pieces In objects
+		Call Rhino.Command("_SelID " & pieces & "_Enter", 0)
+	Next
+	Call Rhino.Command("_Join", 0)
+	joinmore = Rhino.LastCreatedObjects
+	Rhino.UnselectAllObjects
+End Function
+
+Function Closestpoint(curve, point)
+	Dim  t
+	t = Rhino.CurveClosestPoint(curve, point)
+	If Not IsNull(t) Then
+		Closestpoint = Rhino.EvaluateCurve(curve, t)
+	End If
+End Function
+
+Sub Svahyteren()
+	If Rhino.IsLayer("TEREN") Then
+		Rhino.LayerLocked "TEREN", False
+	End If
+	Dim Teren,Trasa1,Trasa2,bod(1),pricnyrez(3),pricnyrezpoints(),betastart,betaend,sklonnasep,sklonvykop,prunik,kruznice,kruzniceplocha,pomline
+
+	Teren = Rhino.GetObject("Vyber teren", 24)
+	If IsNull(Teren) Then
+		Rhino.Print("Nevybral jste teren")
+		Exit Sub	
+	End If
+	
+	Trasa1 = Rhino.GetObject("Vyber hranu na ktere chces vytvorit svah", 4)
+	If IsNull(Trasa2) Then
+		Rhino.Print("Nevybral jste hranu")
+		Exit Sub	
+	End If
+	
+	Trasa2 = Rhino.GetObject("Vyber hranu na ktere chces vytvorit svah", 4)
+	If IsNull(Trasa2) Then
+		Rhino.Print("Nevybral jste hranu")
+		Exit Sub	
+	End If
+	
+	If Rhino.IsLayer("Svahy") Then
+		Rhino.CurrentLayer("Svahy")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Svahy", RGB(150, 75, 0))
+		Rhino.CurrentLayer("Svahy")
+	End If
+	
+	sklonnasep = Rhino.GetReal("Zadej sklon naspu (1:n):", 1.75, 1, 4)
+	If IsNull(sklonnasep) Then
+		Rhino.Print("Nezadal si sklon")
+		Exit Sub	
+	End If
+	
+	sklonvykop = Rhino.GetReal("Zadej sklon vykopu(1:n):", 1.75, 1, 4)
+	If IsNull(sklonvykop) Then
+		Rhino.Print("Nezadal si sklon")
+		Exit Sub	
+	End If
+	
+	Dim Moznostivyberu,Vychozi,Vlastnosti
+	Moznostivyberu = Array("Prikopy", "Ne", "Ano")
+	Vychozi = Array(True)
+	Vlastnosti = Rhino.GetBoolean("Vlastnosti svahu", Moznostivyberu, Vychozi)
+	
+	If Vlastnosti(0) = True Then
+		Dim hloubkaprikopu,	sirkaprikopu
+		hloubkaprikopu = Rhino.GetReal("Zadej hloubku prikopu", 0.4, 0.3, 2)
+		sirkaprikopu = Rhino.GetReal("Zadej sirku prikopu", 0.5, 0.2, 2)
+	End If
+	'Rhino.EnableRedraw vbFalse
+	Rhino.Print" Pracuji"
+	'Svahy profil
+	If Vlastnosti(0) = True Then
+		ReDim pricnyrezpoints(3)
+		pricnyrezpoints(0) = Array(0, 0, 0)
+		pricnyrezpoints(1) = Array(hloubkaprikopu * sklonnasep, 0, -hloubkaprikopu)
+		pricnyrezpoints(2) = Array(hloubkaprikopu * sklonnasep + sirkaprikopu, 0, -hloubkaprikopu)
+		pricnyrezpoints(3) = Array(hloubkaprikopu * sklonnasep + sirkaprikopu + 10 * sklonvykop, 0, 12)
+	Else
+		ReDim pricnyrezpoints(1)
+		pricnyrezpoints(0) = Array(0, 0, 0)
+		pricnyrezpoints(1) = Array(10 * sklonvykop, 0, 10)
+	End If
+	Dim svahtrasa1,naseptrasa1,svahtrasa2,naseptrasa2
+	'Urceni pruniku a uhlu TRASA 1
+	bod(0) = Rhino.CurveStartPoint(Trasa1)
+	Kruznice = Rhino.AddCircle(bod(0), 0.1)
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik = Rhino.CurveSurfaceIntersection(Trasa1, Kruzniceplocha)
+	betastart = Rhino.Angle(Array(bod(0)(0), bod(0)(1), 0), Array(prunik(0, 1)(0), prunik(0, 1)(1), 0))
+	Rhino.DeleteObject(Kruznice)
+	Rhino.DeleteObject(Pomline)
+	Rhino.DeleteObject(Kruzniceplocha)
+	
+	bod(1) = Rhino.CurveendPoint(Trasa1)
+	Kruznice = Rhino.AddCircle(bod(1), 0.1)
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik = Rhino.CurveSurfaceIntersection(Trasa1, Kruzniceplocha)
+	betaend = Rhino.Angle(Array(bod(1)(0), bod(1)(1), 0), Array(prunik(0, 1)(0), prunik(0, 1)(1), 0))
+	Rhino.DeleteObject(Kruznice)
+	Rhino.DeleteObject(Pomline)
+	Rhino.DeleteObject(Kruzniceplocha)
+	
+	
+	'Trasa 1
+	Dim curvepoints(7)
+	pricnyrez(0) = Rhino.Addpolyline(pricnyrezpoints)
+	pricnyrez(1) = Rhino.Addline(Array(0, 0, 0), Array(10 * sklonnasep, 0, -10))
+	pricnyrez(2) = Rhino.Addpolyline(pricnyrezpoints)
+	pricnyrez(3) = Rhino.Addline(Array(0, 0, 0), Array(10 * sklonnasep, 0, -10))
+	Rhino.MoveObjects Array(pricnyrez(0), pricnyrez(1)), Array(0, 0, 0), bod(0)
+	Rhino.RotateObjects Array(pricnyrez(0), pricnyrez(1)), bod(0), (betastart(0) + 90)
+	'Urceni strany +180
+	'Pombod
+	Dim Strana,stranovybod,distance(1)
+	Strana = 0
+	stranovybod = closestpoint(Trasa2, bod(0))
+	Distance(0) = Rhino.Distance(stranovybod, Rhino.CurveEndPoint(pricnyrez(0)))
+	Rhino.RotateObjects Array(pricnyrez(0), pricnyrez(1)), bod(0), 180
+	Distance(1) = Rhino.Distance(stranovybod, Rhino.CurveEndPoint(pricnyrez(0)))
+	If distance(1) > distance(0) Then
+		Strana = 180
+	Else
+		Rhino.RotateObjects Array(pricnyrez(0), pricnyrez(1)), bod(0), 180
+	End If
+
+	
+	Rhino.MoveObjects Array(pricnyrez(2), pricnyrez(3)), Array(0, 0, 0), bod(1)
+	Rhino.RotateObjects Array(pricnyrez(2), pricnyrez(3)), bod(1), (betaend(0) + Strana + 270)
+	svahtrasa1 = Rhino.AddSweep1(Trasa1, Array(pricnyrez(0), pricnyrez(2)))
+	naseptrasa1 = Rhino.AddSweep1(Trasa1, Array(pricnyrez(1), pricnyrez(3)))
+	curvepoints(0) = Rhino.CurvePoints(pricnyrez(0))
+	curvepoints(1) = Rhino.CurvePoints(pricnyrez(1))
+	curvepoints(2) = Rhino.CurvePoints(pricnyrez(2))
+	curvepoints(3) = Rhino.CurvePoints(pricnyrez(3))
+	Rhino.DeleteObject(pricnyrez(0))
+	Rhino.DeleteObject(pricnyrez(1))
+	Rhino.DeleteObject(pricnyrez(2))
+	Rhino.DeleteObject(pricnyrez(3))
+
+	'Urceni pruniku a uhlu TRASA 2
+	bod(0) = Rhino.CurveStartPoint(Trasa2)
+	Kruznice = Rhino.AddCircle(bod(0), 0.1)
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik = Rhino.CurveSurfaceIntersection(Trasa2, Kruzniceplocha)
+	betastart = Rhino.Angle(Array(bod(0)(0), bod(0)(1), 0), Array(prunik(0, 1)(0), prunik(0, 1)(1), 0))
+	Rhino.DeleteObject(Kruznice)
+	Rhino.DeleteObject(Pomline)
+	Rhino.DeleteObject(Kruzniceplocha)
+	
+	bod(1) = Rhino.CurveendPoint(Trasa2)
+	Kruznice = Rhino.AddCircle(bod(1), 0.1)
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik = Rhino.CurveSurfaceIntersection(Trasa2, Kruzniceplocha)
+	betaend = Rhino.Angle(Array(bod(1)(0), bod(1)(1), 0), Array(prunik(0, 1)(0), prunik(0, 1)(1), 0))
+	Rhino.DeleteObject(Kruznice)
+	Rhino.DeleteObject(Pomline)
+	Rhino.DeleteObject(Kruzniceplocha)
+	
+	Strana = 0
+	'Trasa 2
+	bod(0) = Rhino.CurveStartPoint(Trasa2)
+	pricnyrez(0) = Rhino.Addpolyline(pricnyrezpoints)
+	pricnyrez(1) = Rhino.Addline(Array(0, 0, 0), Array(10 * sklonnasep, 0, -10))
+	pricnyrez(2) = Rhino.Addpolyline(pricnyrezpoints)
+	pricnyrez(3) = Rhino.Addline(Array(0, 0, 0), Array(10 * sklonnasep, 0, -10))
+	Rhino.MoveObjects Array(pricnyrez(0), pricnyrez(1)), Array(0, 0, 0), bod(0)
+	Rhino.RotateObjects Array(pricnyrez(0), pricnyrez(1)), bod(0), (betastart(0) + Strana + 90)
+
+	stranovybod = closestpoint(Trasa1, bod(0))
+	Distance(0) = Rhino.Distance(stranovybod, Rhino.CurveEndPoint(pricnyrez(0)))
+	Rhino.RotateObjects Array(pricnyrez(0), pricnyrez(1)), bod(0), 180
+	Distance(1) = Rhino.Distance(stranovybod, Rhino.CurveEndPoint(pricnyrez(0)))
+	If distance(1) > distance(0) Then
+		Strana = 180
+	Else
+		Rhino.RotateObjects Array(pricnyrez(0), pricnyrez(1)), bod(0), 180
+	End If
+	Rhino.MoveObjects Array(pricnyrez(2), pricnyrez(3)), Array(0, 0, 0), bod(1)
+	Rhino.RotateObjects Array(pricnyrez(2), pricnyrez(3)), bod(1), (betaend(0) + Strana + 270)
+	svahtrasa2 = Rhino.AddSweep1(Trasa2, Array(pricnyrez(0), pricnyrez(2)))
+	naseptrasa2 = Rhino.AddSweep1(Trasa2, Array(pricnyrez(1), pricnyrez(3)))
+
+	'Body rezu
+	curvepoints(4) = Rhino.CurvePoints(pricnyrez(0))
+	curvepoints(5) = Rhino.CurvePoints(pricnyrez(1))
+	curvepoints(6) = Rhino.CurvePoints(pricnyrez(2))
+	curvepoints(7) = Rhino.CurvePoints(pricnyrez(3))
+	Rhino.DeleteObject(pricnyrez(0))
+	Rhino.DeleteObject(pricnyrez(1))
+	Rhino.DeleteObject(pricnyrez(2))
+	Rhino.DeleteObject(pricnyrez(3))
+	
+	'BOCNI PLOCHY
+	Dim bocniplochy(),join
+	If Rhino.Distance(Curvepoints(0)(0), Curvepoints(4)(0)) < Rhino.Distance(Curvepoints(0)(0), Curvepoints(6)(0)) Then
+		If Vlastnosti(0) = True Then
+			ReDim bocniplochy(7) 'PRIKOPY,0-4
+			'PRedni
+			bocniplochy(0) = Rhino.AddSrfPt(Array(Curvepoints(0)(0), Curvepoints(0)(1), Curvepoints(0)(2), Curvepoints(0)(3)))
+			bocniplochy(1) = Rhino.AddSrfPt(Array(Curvepoints(4)(0), Curvepoints(4)(1), Curvepoints(4)(2), Curvepoints(4)(3)))
+			bocniplochy(2) = Rhino.AddSrfPt(Array(Curvepoints(0)(0), Curvepoints(4)(0), Curvepoints(4)(3), Curvepoints(0)(3)))
+			bocniplochy(3) = Rhino.AddSrfPt(Array(Curvepoints(1)(0), Curvepoints(1)(1), Curvepoints(5)(1), Curvepoints(5)(0)))
+			'Zadni
+			bocniplochy(4) = Rhino.AddSrfPt(Array(Curvepoints(2)(0), Curvepoints(2)(1), Curvepoints(2)(2), Curvepoints(2)(3)))
+			bocniplochy(5) = Rhino.AddSrfPt(Array(Curvepoints(6)(0), Curvepoints(6)(1), Curvepoints(6)(2), Curvepoints(6)(3)))
+			bocniplochy(6) = Rhino.AddSrfPt(Array(Curvepoints(2)(0), Curvepoints(6)(0), Curvepoints(6)(3), Curvepoints(2)(3)))
+			bocniplochy(7) = Rhino.AddSrfPt(Array(Curvepoints(3)(0), Curvepoints(3)(1), Curvepoints(7)(1), Curvepoints(7)(0)))
+				
+		Else
+			ReDim bocniplochy(3) 'NE PRIKop,0-4
+			bocniplochy(0) = Rhino.AddSrfPt(Array(Curvepoints(0)(0), Curvepoints(0)(1), Curvepoints(4)(1), Curvepoints(4)(0)))
+			bocniplochy(1) = Rhino.AddSrfPt(Array(Curvepoints(1)(0), Curvepoints(1)(1), Curvepoints(5)(1), Curvepoints(5)(0)))
+			bocniplochy(2) = Rhino.AddSrfPt(Array(Curvepoints(2)(0), Curvepoints(2)(1), Curvepoints(6)(1), Curvepoints(6)(0)))
+			bocniplochy(3) = Rhino.AddSrfPt(Array(Curvepoints(3)(0), Curvepoints(3)(1), Curvepoints(7)(1), Curvepoints(7)(0)))
+		End If
+	Else
+		If Vlastnosti(0) = True Then
+			ReDim bocniplochy(7)'PRIKOPY,0-6
+			'PRedni
+			bocniplochy(0) = Rhino.AddSrfPt(Array(Curvepoints(0)(0), Curvepoints(0)(1), Curvepoints(0)(2), Curvepoints(0)(3)))
+			bocniplochy(1) = Rhino.AddSrfPt(Array(Curvepoints(6)(0), Curvepoints(6)(1), Curvepoints(6)(2), Curvepoints(6)(3)))
+			bocniplochy(2) = Rhino.AddSrfPt(Array(Curvepoints(0)(0), Curvepoints(6)(0), Curvepoints(6)(3), Curvepoints(0)(3)))
+			bocniplochy(3) = Rhino.AddSrfPt(Array(Curvepoints(1)(0), Curvepoints(1)(1), Curvepoints(7)(1), Curvepoints(7)(0)))
+			'Zadni
+			bocniplochy(4) = Rhino.AddSrfPt(Array(Curvepoints(2)(0), Curvepoints(2)(1), Curvepoints(2)(2), Curvepoints(2)(3)))
+			bocniplochy(5) = Rhino.AddSrfPt(Array(Curvepoints(4)(0), Curvepoints(4)(1), Curvepoints(4)(2), Curvepoints(4)(3)))
+			bocniplochy(6) = Rhino.AddSrfPt(Array(Curvepoints(2)(0), Curvepoints(4)(0), Curvepoints(4)(3), Curvepoints(2)(3)))
+			bocniplochy(7) = Rhino.AddSrfPt(Array(Curvepoints(3)(0), Curvepoints(3)(1), Curvepoints(5)(1), Curvepoints(5)(0)))
+				
+		Else
+			ReDim bocniplochy(3) 'NE PRIKop,0-4
+			bocniplochy(0) = Rhino.AddSrfPt(Array(Curvepoints(0)(0), Curvepoints(0)(1), Curvepoints(6)(1), Curvepoints(6)(0)))
+			bocniplochy(1) = Rhino.AddSrfPt(Array(Curvepoints(1)(0), Curvepoints(1)(1), Curvepoints(7)(1), Curvepoints(7)(0)))
+			bocniplochy(2) = Rhino.AddSrfPt(Array(Curvepoints(2)(0), Curvepoints(2)(1), Curvepoints(4)(1), Curvepoints(4)(0)))
+			bocniplochy(3) = Rhino.AddSrfPt(Array(Curvepoints(3)(0), Curvepoints(3)(1), Curvepoints(5)(1), Curvepoints(5)(0)))
+		End If
+	End If
+	'Vytvoreni kopii svahu
+	Dim copysvahy(),terencopy
+	Terencopy = Rhino.CopyObject(teren, Array(0, 0, 0), Array(0, 0, 0))
+	'Rezani terenu
+	Dim joinm,splitteren
+	If Vlastnosti(0) = True Then
+		Dim pomlines(3)
+		pomlines(0) = Rhino.AddPolyline(Array(curvepoints(0)(3), curvepoints(0)(2), curvepoints(0)(1), Curvepoints(1)(1)))
+		pomlines(1) = Rhino.AddPolyline(Array(curvepoints(4)(3), curvepoints(4)(2), curvepoints(4)(1), Curvepoints(5)(1)))
+		pomlines(2) = Rhino.AddPolyline(Array(curvepoints(2)(3), curvepoints(2)(2), curvepoints(2)(1), Curvepoints(3)(1)))
+		pomlines(3) = Rhino.AddPolyline(Array(curvepoints(6)(3), curvepoints(6)(2), curvepoints(6)(1), Curvepoints(7)(1)))
+		ReDim copysvahy(1)
+		copysvahy(0) = Rhino.AddSweep1(Trasa1, Array(pomlines(0), pomlines(2)))
+		copysvahy(1) = Rhino.AddSweep1(Trasa2, Array(pomlines(1), pomlines(3)))
+		join = Array(copysvahy(0)(0), copysvahy(1)(0), bocniplochy(0), bocniplochy(1), bocniplochy(2), bocniplochy(3), bocniplochy(4), bocniplochy(5), bocniplochy(6), bocniplochy(7))
+	Else
+		ReDim copysvahy(3)
+		Copysvahy(0) = Rhino.CopyObject(svahtrasa1(0), Array(0, 0, 0), Array(0, 0, 0))
+		Copysvahy(1) = Rhino.CopyObject(svahtrasa2(0), Array(0, 0, 0), Array(0, 0, 0)) 
+		Copysvahy(2) = Rhino.CopyObject(naseptrasa2(0), Array(0, 0, 0), Array(0, 0, 0))
+		Copysvahy(3) = Rhino.CopyObject(naseptrasa1(0), Array(0, 0, 0), Array(0, 0, 0))
+		join = Array(Copysvahy(0), Copysvahy(1), Copysvahy(2), Copysvahy(3), bocniplochy(0), bocniplochy(1), bocniplochy(2), bocniplochy(3))
+	End If
+	joinm = joinmore(join)
+	splitteren = dosplit(teren, joinm(0))
+	'	pomline = Array(0, 0, 40)
+	'	Rhino.ExtrudeCurve(Trasa1
+	If Not isnull(splitteren) Then 
+		Rhino.DeleteObject splitteren(1)
+	End If
+	Rhino.DeleteObject joinm(0)
+	'Rezani svahu
+
+	Dim split
+	split = Dosplit(svahtrasa1(0), Terencopy)
+	If Not isnull(split) Then 
+		If Vlastnosti(0) = True Then
+			Rhino.DeleteObject split(0)
+		Else
+			Rhino.DeleteObject split(Ubound(Split))
+		End If
+	Else
+		Rhino.DeleteObject svahtrasa1(0)
+	End If
+	
+	split = Dosplit(svahtrasa2(0), Terencopy)
+	If Not isnull(split) Then 
+		If Vlastnosti(0) = True Then
+			Rhino.DeleteObject split(0)
+		Else
+			Rhino.DeleteObject split(Ubound(Split))
+		End If
+	Else
+		Rhino.DeleteObject svahtrasa2(0)
+	End If
+
+	
+
+	split = Dosplit(naseptrasa2(0), Terencopy)
+	If Not isnull(split) Then 
+		Rhino.DeleteObject split(0)
+	Else
+		Rhino.DeleteObject naseptrasa2(0)
+	End If
+	split = Dosplit(naseptrasa1(0), Terencopy)
+	If Not isnull(split) Then 
+		Rhino.DeleteObject split(0)
+	Else
+		Rhino.DeleteObject naseptrasa1(0)
+	End If
+		
+	If Vlastnosti(0) = True Then
+		Rhino.DeleteObjects(Array(pomlines(0), pomlines(1), pomlines(2), pomlines(3)))
+	End If
+	Rhino.DeleteObject terencopy
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.Print" Byly vytvoreny svahy pro silnici"
+	Rhino.EnableRedraw vbTrue
+End Sub

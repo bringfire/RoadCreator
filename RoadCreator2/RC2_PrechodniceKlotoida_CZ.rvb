@@ -1,0 +1,414 @@
+Option Explicit
+
+
+Function cosin(x)
+	Dim prepo,A,B,disprepona,disproti
+	A = Array(0, 0, 0)
+	B = Array(1, 0, 0)
+	prepo = Rhino.AddLine(A, B)
+	Rhino.RotateObject prepo, A, x
+	B = Rhino.CurveEndPoint(prepo)
+	disproti = Rhino.Angle(A, B)
+	Rhino.DeleteObject(prepo)
+	cosin = disproti(2)
+	
+End Function
+
+Function sinus(x)
+	Dim prepo,A,B,disprepona,disproti
+	A = Array(0, 0, 0)
+	B = Array(1, 0, 0)
+	prepo = Rhino.AddLine(A, B)
+	Rhino.RotateObject prepo, A, x
+	B = Rhino.CurveEndPoint(prepo)
+	disproti = Rhino.Angle(A, B)
+	Rhino.DeleteObject(prepo)
+	sinus = disproti(3)
+	
+End Function
+
+Function Split(brep, cutter)
+	Dim saved, cmd
+	split = Null
+	saved = Rhino.SelectedObjects
+	Rhino.UnSelectAllObjects
+	Rhino.SelectObject brep
+	cmd = "_Split _SelID " & cutter & " _Enter"
+	Rhino.Command cmd, 0
+	split = Rhino.LastCreatedObjects
+	Rhino.UnSelectAllObjects
+	If IsArray(saved) Then Rhino.SelectObjects(saved)
+End Function
+
+Call RC2_PrechodniceKlotoida_CZ()
+Sub RC2_PrechodniceKlotoida_CZ()
+
+	Dim version,ts
+	version = Rhino.ExeVersion
+	ts = 1
+	If version = 6 Then
+		ts = 1000
+	End If
+	
+	Dim tecna1(3),tecna2(3),Nazevvrstvy,L,R,nameparts,pomoc,vrch,vrchol,D,length
+	Rhino.CurrentView "Top"
+	Rhino.LayerLocked "Vrstevnice", True
+	'TECNA1
+	tecna1(0) = Rhino.GetObject("Vyber první část tečnového polygonu", 4)
+	If IsNull(tecna1(0)) Then
+		Rhino.Print "Nevybral jste první část tečnového polygonu"
+		Rhino.LayerLocked "Vrstevnice", False
+		Exit Sub
+	Else
+		nameparts = Rhino.Strtok(Rhino.ObjectName(tecna1(0)), " ")
+		tecna1(1) = nameparts(0)
+		tecna1(2) = nameparts(1)
+		If Ubound(nameparts) = 2 Then
+			tecna1(3) = nameparts(2)
+		End If
+		
+	End If
+	
+	'TECNA2
+	tecna2(0) = Rhino.GetObject("Vyber druhou část tečnového polygonu", 4)
+	If IsNull(tecna2(0)) Then
+		Rhino.Print "Nevybral jste druhou část tečnového polygonu"
+		Rhino.LayerLocked "Vrstevnice", False
+		Exit Sub
+	Else
+		nameparts = Rhino.Strtok(Rhino.ObjectName(tecna2(0)), " ")
+		tecna2(1) = nameparts(0)
+		tecna2(2) = nameparts(1)
+		If Ubound(nameparts) = 2 Then
+			tecna2(3) = nameparts(2)
+		End If
+	End If
+	
+	'SOUSEDNI
+	If tecna1(1) = tecna2(1) Then
+		Rhino.Print("Tečny patří do jednoho tečnového polygonu")
+		If Abs(Tecna2(2) - tecna1(2)) = 1 Then
+			Rhino.Print("Tečny jsou sousední")
+			If Tecna1(2) - tecna2(2) = 1 Then
+				pomoc = tecna1
+				tecna1(0) = tecna2(0)
+				tecna1(1) = tecna2(1)
+				tecna1(2) = tecna2(2)
+				tecna2(0) = pomoc(0)
+				tecna2(1) = pomoc(1)
+				tecna2(2) = pomoc(2)
+				If Ubound(pomoc) = 3 Then
+					tecna2(3) = pomoc(3)
+				End If
+				
+			End If
+		Else
+			Rhino.Print("Tečny nejsou sousední")
+		End If
+	Else
+		Rhino.Print("Tečny nepatří do stejného tečnového polygonu")
+	End If
+	length = Rhino.CurveLength(tecna1(0))
+	'OSTATNI PARAMETRY
+	L = Rhino.GetReal("Zadej délku přechodnice klotoidy:", 70, 0)	
+	If IsNull(L) Then
+		Rhino.Print "Nezadal jste délku přechodnice"
+		Exit Sub
+	End If
+	
+	R = Rhino.GetReal("Zadejte poloměr navazujícího kružnicového oblouku R:", 150, 10, 10000)	
+	If IsNull(R) Then
+		Rhino.Print "Nezadal jste poloměr navazujícího kružnicového oblouku R"
+		Exit Sub
+	End If
+	
+
+	
+	Rhino.LayerLocked "Vrstevnice", False
+	
+	'PRUSECIK
+	Rhino.EnableRedraw vbFalse
+	vrch = Rhino.CurveCurveIntersection(tecna1(0), tecna2(0))
+	If IsNull(vrch) Then
+		Rhino.Print "Nejedná se o tečny s prusečíkem"
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	
+	vrchol = vrch(0, 1)
+	Dim X,Y,i,delkaseg,arrpoint(25),prech,A,pocatek
+	pocatek = Array(0, 0, 0)
+	delkaseg = L / 25
+	A = L * R
+	i = 0
+	
+	'VYPOCET KLOTOIDY
+	Do While i <= 25
+		If i = 0 Then
+			X = 0
+			Y = 0
+		Else 
+			l = delkaseg * i
+			r = A / l
+			X = l - ((l ^ 3) / (40 * (r ^ 2))) + ((l ^ 5) / (3456 * (r ^ 4)))
+			Y = ((l ^ 2) / (6 * (r ^ 1))) - ((l ^ 4) / (336 * (r ^ 3))) + ((l ^ 6) / (42240 * (r ^ 5)))
+		End If
+		arrpoint(i) = Array(X, Y, 0)
+		i = i + 1
+	Loop
+	
+	prech = Rhino.AddInterpCurve(arrpoint)
+	
+	'ZISKANI UHLU
+	Dim kruz, pru1,pru2,alfa,tecline1(1),tecline2(1),beta,alfa1
+	kruz = Rhino.AddCircle(vrchol, 1)
+	pru1 = Rhino.CurveCurveIntersection(tecna1(0), kruz)
+	'Rhino.AddPoint pru1(0, 1)
+	pru2 = Rhino.CurveCurveIntersection(tecna2(0), kruz)
+	'Rhino.AddPoint pru2(0, 1)
+	Rhino.DeleteObject(kruz)
+	tecline1(0) = pru1(0, 1)
+	tecline1(1) = vrchol
+	tecline2(0) = pru2(0, 1)
+	tecline2(1) = vrchol
+	alfa1 = Rhino.Angle2(tecline1, tecline2)
+	alfa = 180 - alfa1(0)
+	beta = Rhino.Angle(pru1(0, 1), vrchol)
+	'Rhino.Print "alfa: " & CStr(alfa)
+	'Rhino.Print "beta: " & CStr(beta(0))
+	
+	'VELKA TECNA'
+	Dim Xs,m,tec,veltec
+	Xs = L / 2 - ((L ^ 3) / (240 * (R ^ 2)))
+	m = ((L ^ 2) / (24 * R)) - ((L ^ 4) / (2688 * (R ^ 3)))
+	tec = (R + m) * ( sinus(alfa / 2) / Cosin(alfa / 2))
+	Rhino.Print "m: " & CStr(m)
+	Rhino.Print "Xs: " & CStr(tec)
+	veltec = tec + Xs
+	Rhino.Print "Velka tecna je : " & CStr(veltec)
+	
+	'ZACATEK PRECHODNICE A NATOCENI
+	kruz = Rhino.AddCircle(vrchol, veltec)
+	pru1 = Rhino.CurveCurveIntersection(tecna1(0), kruz)
+	If IsNull(pru1) Then
+		Rhino.Print "První tečna je příliš krátká a zadaný oblouk se nevejde "
+		Rhino.DeleteObject(kruz)
+		Rhino.DeleteObject prech
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	pru2 = Rhino.CurveCurveIntersection(tecna2(0), kruz)
+	If IsNull(pru2) Then
+		Rhino.Print "Druhá tečna je příliš krátká a zadaný oblouk se nevejde "
+		Rhino.DeleteObject(kruz)
+		Rhino.DeleteObject prech
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	Rhino.DeleteObject(kruz)
+	
+	'Rhino.AddPoint pru1(0, 1)
+	
+	'vytvoreni druhe prech
+	Dim pomline(1),midpoint,pomcurve
+	pomline(0) = pru1(0, 1)
+	pomline(1) = pru2(0, 1)
+	pomcurve = Rhino.AddCurve(pomline)
+	midpoint = Rhino.CurveMidPoint(pomcurve)
+	Rhino.DeleteObject(pomcurve)
+	
+	'Pravotociví/Levotociví
+	Dim PomPoint,Kolmiceline(1),Kolmice,smerline(1)
+	PomPoint = Array(0, -10, 0)
+	Kolmiceline(0) = pocatek
+	Kolmiceline(1) = PomPoint
+	Kolmice = Rhino.AddCurve(Kolmiceline)
+	Rhino.MoveObject Kolmice, pocatek, vrchol
+	Rhino.RotateObject Kolmice, vrchol, beta(0)
+	PomPoint = Rhino.CurveEndPoint(Kolmice)
+	'Rhino.AddPoint(PomPoint)
+	Kolmiceline(0) = vrchol
+	Kolmiceline(1) = PomPoint
+	smerline(0) = vrchol
+	smerline(1) = midpoint
+	'Rhino.AddLine smerline(0), smerline(1)
+	alfa = Rhino.Angle2(smerline, Kolmiceline)
+	Rhino.DeleteObject(Kolmice)
+	'Rhino.Print "uhle kolmice a smer: " & CStr(alfa(1))
+	
+	'Transformace prechodnice
+	Dim prava
+	Pompoint = Array(10, 0, 0)
+	prava = False
+	If alfa(1) > 270 Then
+		prech = Rhino.MirrorObject(prech, pocatek, PomPoint, False)
+		prava = True
+	End If
+	Rhino.MoveObject prech, pocatek, pru1(0, 1)
+	Rhino.RotateObject prech, pru1(0, 1), beta(0)
+	Dim prech2
+	prech2 = Rhino.MirrorObject(prech, vrchol, midpoint, True)
+
+
+	'OBLOUK
+	Dim kon1,kon2,pomkruz1,pomkruz2,pomkruz,pru3,pru4,midpointprech
+	kon1 = Rhino.CurveEndPoint(prech)
+	kon2 = Rhino.CurveEndPoint(prech2)
+	
+	pomline(0) = kon1
+	pomline(1) = kon2
+	pomcurve = Rhino.AddCurve(pomline)
+	midpointprech = Rhino.CurveMidPoint(pomcurve)
+	Rhino.DeleteObject(pomcurve)
+	
+
+	'Rhino.AddPoint(kon1)
+	'Rhino.AddPoint(kon2)
+	pomkruz1 = Rhino.AddCircle(kon1, R)
+	pomkruz2 = Rhino.AddCircle(kon2, R)
+	pru1 = Rhino.CurveCurveIntersection(pomkruz1, pomkruz2)
+	pomline(0) = vrchol
+	pomline(1) = midpointprech
+	pomcurve = Rhino.AddCurve(pomline)
+	
+	'pruseciky pomocnych kruznic
+
+	i = 0
+	Do While i <= 1
+		Dim Oblouk
+		pomkruz = Rhino.AddCircle(pru1(i, 1), R)
+		If i = 0 Then
+			pru4 = Rhino.CurveCurveIntersection(Pomkruz, pomcurve)
+			If Not IsNull(pru4) Then
+				Oblouk = Rhino.AddArc3Pt(kon1, kon2, pru4(0, 1))
+			End If
+		Else
+			pru3 = Rhino.CurveCurveIntersection(Pomkruz, pomcurve)
+			If Not IsNull(pru3) Then
+				Oblouk = Rhino.AddArc3Pt(kon1, kon2, pru3(0, 1))
+			End If
+		End If
+		Rhino.DeleteObject(pomkruz)
+		i = i + 1
+	Loop
+	Dim archpoint,join2,addtext,adddegre
+	
+	If prava = True Then
+		addtext = "P"
+		adddegre = 180
+	Else
+		addtext = "L"
+		adddegre = 0
+	End If
+	
+
+	
+
+	Rhino.DeleteObject pomcurve
+	Rhino.DeleteObject pomkruz1
+	Rhino.DeleteObject pomkruz2
+	Dim rozdel(1),join,pombod
+	rozdel(0) = split(tecna1(0), prech)
+	Rhino.DeleteObject rozdel(0)(1)
+	rozdel(1) = split(tecna2(0), prech2)
+	Rhino.DeleteObject rozdel(1)(1)
+	
+
+	'Staniceni
+	Dim stanicenitext(3),stpoints(3),stlength(3),delta
+	stpoints(0) = rhino.CurveStartPoint(prech)
+	stpoints(1) = rhino.CurveEndPoint(prech)
+	stpoints(2) = rhino.CurveEndPoint(prech2)
+	stpoints(3) = rhino.CurveStartPoint(prech2)
+	
+	stlength(0) = length - veltec
+	stlength(1) = stlength(0) + L
+	stlength(2) = stlength(1) + Rhino.CurveLength(oblouk) 
+	stlength(3) = stlength(2) + L
+			
+	stanicenitext(0) = Rhino.AddText("ZP km " + Cstr(Round(stlength(0) / 1000, 6)), Array(0, 0, 0), 3 / ts)
+	stanicenitext(1) = Rhino.AddText("PO km " + Cstr(Round(stlength(1) / 1000, 6)), Array(0, 0, 0), 3 / ts)
+	stanicenitext(2) = Rhino.AddText("OP km " + Cstr(Round(stlength(2) / 1000, 6)), Array(0, 0, 0), 3 / ts)
+	stanicenitext(3) = Rhino.AddText("KP km " + Cstr(Round(stlength(3) / 1000, 6)), Array(0, 0, 0), 3 / ts)
+	
+	'Nazvy bodu
+	Archpoint = Rhino.AddPoint(rhino.CurveStartPoint(prech))
+	Rhino.ObjectName archpoint, tecna1(1) + " " + tecna1(2) + " R ZP " + Cstr(stlength(0))
+	Rhino.ObjectLayer archpoint, tecna1(1) + "::Tečnový polygon::Staničení::Staničení body"
+	
+	Archpoint = Rhino.AddPoint(rhino.CurveStartPoint(prech2))
+	Rhino.ObjectName archpoint, tecna2(1) + " " + tecna1(2) + " R KP " + Cstr(stlength(3))
+	Rhino.ObjectLayer archpoint, tecna1(1) + "::Tečnový polygon::Staničení::Staničení body"
+	
+	Archpoint = Rhino.AddPoint(rhino.CurveEndPoint(prech))
+	Rhino.ObjectName archpoint, tecna2(1) + " " + tecna1(2) + " " + addtext + " PO " + Cstr(stlength(1)) + " R_" + Cstr (R) 
+	Rhino.ObjectLayer archpoint, tecna1(1) + "::Tečnový polygon::Staničení::Staničení body"
+	
+	Archpoint = Rhino.AddPoint(rhino.CurveEndPoint(prech2))
+	Rhino.ObjectName archpoint, tecna2(1) + " " + tecna1(2) + " " + addtext + " OP " + Cstr(stlength(2)) + " R_" + Cstr (R) 
+	Rhino.ObjectLayer archpoint, tecna1(1) + "::Tečnový polygon::Staničení::Staničení body"
+	
+	
+	'Spojeni oblouku
+	Dim Lo
+	Lo = Round(Rhino.CurveLength(oblouk), 3)
+	pomcurve = Rhino.AddCurve(Array(rhino.CurveEndPoint(prech), rhino.CurveEndPoint(prech2)))
+	delta = Rhino.Angle(rhino.CurveEndPoint(prech), rhino.CurveEndPoint(prech2))
+	join = Rhino.JoinCurves(Array(oblouk, prech, prech2, rozdel(0)(0), rozdel(1)(2)), True)
+	
+	'Staniceni2
+	Dim curvepar,tangent,stline,gama,copy
+	i = 0
+	stline = rhino.AddLine(Array(0, 0, 0), Array(33, 0, 0))
+	Do While i < 4
+		curvepar = Rhino.CurveClosestPoint(join(0), stpoints(i))
+		tangent = Rhino.CurveTangent(join(0), curvepar)
+		gama = Rhino.Angle(Array(0, 0, 0), tangent)
+		copy = Rhino.CopyObject(stline, Array(0, 0, 0), stpoints(i))
+		Rhino.RotateObject copy, stpoints(i), gama(0) - 90
+		Rhino.MoveObject stanicenitext(i), array(-2, -0.5, 0), stpoints(i)
+		Rhino.RotateObject stanicenitext(i), stpoints(i), gama(0) - 90
+		Rhino.ObjectLayer stanicenitext(i), tecna1(1) + "::Tečnový polygon::Staničení"
+		Rhino.ObjectLayer copy, tecna1(1) + "::Tečnový polygon::Staničení"
+		Rhino.ObjectName stanicenitext(i), tecna1(1) + " " + tecna1(2) + " " + stanicenitext(i) + " " + addtext + " OP R_" + Cstr (R) 
+		Rhino.ObjectName copy, tecna1(1) + " " + tecna1(2) + " " + stanicenitext(i) + " " + addtext + " OP R_" + Cstr (R) 
+		If adddegre = 0 Then
+			Rhino.MoveObjects Array(copy, stanicenitext(i)), Rhino.CurveEndPoint(copy), Rhino.CurveStartPoint(copy)
+		End If
+		i = i + 1
+	Loop
+	
+	Rhino.DeleteObject stline
+	
+
+	
+	
+	
+	'Vlozeni legendy
+	Dim text(2),Vopt
+	
+	text(0) = Rhino.AddText("R = " + Cstr(R) + "m; klotoida", Array(0, 40, 0), 3 / ts,, 1, 4)
+	text(1) = Rhino.AddText("alfa = " + Cstr(Round(180 - alfa1(0), 6)) + "° ;T= " + Cstr(Round(veltec, 3)) + " m", Array(0, 35, 0), 3 / ts,, , 4)
+	text(2) = Rhino.AddText("Lo = " + Cstr(Lo) + " m ; Lk = " + Cstr(L) + " m", Array(0, 30, 0), 3 / ts,, , 4)
+	
+	pombod = Rhino.CurveMidPoint(pomcurve)
+	Rhino.DeleteObject pomcurve
+	Rhino.MoveObjects text, Array(0, 0, 0), pombod
+	Rhino.RotateObjects text, pombod, delta(0) - adddegre
+	Rhino.ObjectLayer text, tecna1(1) + "::Tečnový polygon::Legenda"
+	
+	
+	'Pojemovnovani
+
+	Rhino.ObjectLayer join, tecna1(1) + "::Tečnový polygon"
+	length = Rhino.CurveLength(join(0))
+	Rhino.ObjectName join, tecna2(1) + " " + tecna2(2) + " " + tecna1(3) + addtext + "_R_" + Cstr (R) + ";"
+	join2 = Rhino.JoinCurves(Array(rozdel(0)(2), rozdel(1)(0)), True)
+	Rhino.ObjectLayer join2, tecna1(1) + "::Tečnový polygon"
+	Rhino.ObjectName join2, tecna2(1) + " Oblouk_" + tecna1(2) + " " + addtext + " R_" + Cstr (R) 
+	Rhino.EnableRedraw vbTrue
+	Rhino.Print "Byl vytvoren oblouk se symetrickou prechodnici tvaru klotoidy o poloměru: " & CStr(R)
+
+	
+	
+End Sub

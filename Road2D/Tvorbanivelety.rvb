@@ -1,0 +1,65 @@
+﻿Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 14. září 2015 13:34:52
+
+Sub Tvorbanivelety()
+	Dim point,lastpoint,i
+	Dim delka,sklon,stred,vyska,delkaprint,sklonprint,krivka,oblouk,p
+	p = 0
+	i = 0
+	point = Rhino.GetPoint("Vyber začátek výškového polygonu")
+	If isnull(point)Then
+		Rhino.Print("Nevybral jste počátek výškového polygonu")
+		Exit Sub
+	End If
+	lastpoint = point
+	
+	Do While i < 10
+		point = Rhino.GetPoint("Vyber další bod výškového polygonu", lastpoint)
+		If isnull(point)Then
+			If p = 0 Then
+				Rhino.Print("Nevybral jste další výškového polygonu")
+				Exit Sub
+			Else
+				oblouk = Rhino.AddArc(array(lastpoint(0), lastpoint(1) + 80, 0), 3.0, 180)
+				Rhino.RotateObject oblouk, array(lastpoint(0), lastpoint(1) + 80, 0), 90
+				Rhino.AddLine array(lastpoint(0), lastpoint(1) + 80, 0), array(lastpoint(0), lastpoint(1) + 83, 0)
+				If Rhino.IsLayer("Default") Then
+					Rhino.CurrentLayer("Default")
+				Else 
+					Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+					Rhino.CurrentLayer("Default")
+				End If
+				Exit Sub
+			End If
+			
+		End If
+		
+		If p = 0 Then
+			If Rhino.IsLayer("Vyskovy polygony") Then
+				Rhino.CurrentLayer("Vyskovy polygony")
+			Else 
+				Rhino.Print "New layer: " & Rhino.AddLayer("Vyskovy polygony", RGB(255, 0, 0))
+				Rhino.CurrentLayer("Vyskovy polygony")
+			End If
+			Rhino.AddLine array(lastpoint(0), lastpoint(1), 0), array(lastpoint(0), lastpoint(1) + 83, 0)
+			oblouk = Rhino.AddArc(array(lastpoint(0), lastpoint(1) + 80, 0), 3.0, 180)
+			Rhino.RotateObject oblouk, array(lastpoint(0), lastpoint(1) + 80, 0), 270
+			p = 1
+		End If
+		krivka = Rhino.AddLine(lastpoint, point)
+		Rhino.CopyObject krivka, Array(0, 0, 0), Array(0, 80, 0)
+		Rhino.AddLine array(point(0), point(1), 0), array(point(0), point(1) + 80, 0)
+		stred = lastpoint(0) + ((point(0) - lastpoint(0)) / 2)
+		delka = point(0) - lastpoint(0)
+		vyska = (point(1) - lastpoint(1)) / 10
+		sklon = (vyska / delka) * 100
+		delkaprint = (delka * 10 \ 1) / 10
+		sklonprint = (sklon * 100 \ 1) / 100
+		Rhino.AddText "d=" & CStr (delkaprint) & " m", Array(stred - 10, lastpoint(1) + (vyska * 5) + 98, 0), 3
+		Rhino.AddText "s=" & CStr (sklonprint) & " %", Array(stred - 10, lastpoint(1) + (vyska * 5) + 92, 0), 3
+		lastpoint = point
+	Loop
+	
+End Sub

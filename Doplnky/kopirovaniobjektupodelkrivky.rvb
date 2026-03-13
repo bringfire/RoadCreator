@@ -1,0 +1,75 @@
+Option Explicit
+'Script written by <Adam Orlicky>
+'Script copyrighted by <insert company name>
+'Script version 3. března 2016 12:20:53
+
+Call kopirovaniobjektupodelkrivky()
+Sub kopirovaniobjektupodelkrivky()
+	Dim Krivka,sPoints,objekt,base,ekvid
+		
+	Krivka = Rhino.GetObject("Vyber krivku pro vlozeni objektu", 4)
+	If IsNull(Krivka) Then
+		Rhino.Print("Nevybral jste krivku")
+		Exit Sub	
+	End If
+	
+	Objekt = Rhino.Getobjects("Vyber objekt pro kopirovani")
+	If IsNull(Objekt) Then
+		Rhino.Print "Nevybral jste objekt pro kopirovani"
+		Exit Sub
+	End If
+		
+	Base = Rhino.GetPoint("Vyber pocatek kopirovani")
+	If IsNull(Base) Then
+		Rhino.Print "Nevybral jste pocatek"
+		Exit Sub
+	End If
+	
+	ekvid = Rhino.GetReal("Uraci vzdalenost mezi objekty", 5, 1, 1000)
+	Rhino.EnableRedraw vbFalse
+	sPoints = Rhino.DivideCurveEquidistant(Krivka, ekvid)
+	
+	Dim i,kruznice,kruzniceplocha,pomline,prunik,alfa,copy
+	i = 0
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	
+	Do While i =< UBound(sPoints)
+		If i = 0  Then
+			copy = Rhino.CopyObjects(objekt, base, SPoints(i))
+			Kruznice = Rhino.AddCircle(SPoints(i), 0.1)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+			alfa = Rhino.Angle(SPoints(i), prunik(0, 1))
+			Rhino.RotateObjects copy, SPoints(i), 180 + alfa(0)
+			i = i + 1
+			Rhino.DeleteObject Kruznice
+			Rhino.DeleteObject Kruzniceplocha
+		ElseIf i = UBound(SPoints) Then
+			copy = Rhino.CopyObjects(objekt, base, SPoints(i))
+			Kruznice = Rhino.AddCircle(SPoints(i), 0.1)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+			alfa = Rhino.Angle(SPoints(i), prunik(0, 1))
+			Rhino.RotateObjects copy, SPoints(i), 360 + alfa(0)
+			i = i + 1
+			Rhino.DeleteObject Kruznice
+			Rhino.DeleteObject Kruzniceplocha
+		Else
+			copy = Rhino.CopyObjects(objekt, base, SPoints(i))
+			Kruznice = Rhino.AddCircle(SPoints(i), 0.1)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+			alfa = Rhino.Angle(prunik(0, 1), prunik(1, 1))
+			Rhino.RotateObjects copy, SPoints(i), 180 + alfa(0)
+			i = i + 1
+			Rhino.DeleteObject Kruznice
+			Rhino.DeleteObject Kruzniceplocha
+		End If
+	Loop
+	Rhino.DeleteObject pomline
+	Rhino.EnableRedraw vbTrue
+		
+End Sub

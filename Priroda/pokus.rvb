@@ -1,0 +1,59 @@
+﻿Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version úterý 29. května 2018 9:26:24
+
+Call Main()
+Sub Main()
+
+	Dim vrstva,stozar,vyhledej,jmenoobjektu,krivka,points,point,teren
+	
+	vrstva = "Databaze"
+	jmenoobjektu = "stozar"
+	teren = Rhino.GetObject("Vyber objekt terenu")
+	
+	Rhino.LayerVisible vrstva, True
+	Rhino.LayerLocked vrstva, False
+	
+	'Vyber objektu pro kopirovani
+	vyhledej = Rhino.ObjectsByName(jmenoobjektu)
+	stozar = vyhledej(0)
+	
+	
+	'Kresleni krivky
+	points = Rhino.GetPolyline("Zadej body krivky")
+	krivka = Rhino.AddPolyline(points)
+	points = Rhino.DivideCurveLength(krivka, 10)
+
+	
+	
+	'Promitani bodu
+	Dim bodyprom(),i,prombod,copy,tecna,Param,uhel
+	ReDim bodyprom(Ubound(points))
+	
+	i = 0
+	For Each point In points
+		prombod = Rhino.ProjectPointToMesh(point, teren, Array(0, 0, 1))
+		bodyprom(i) = prombod(0)
+		copy = Rhino.CopyObject(stozar, Array(0, 0, 0), prombod(0))
+		Rhino.ObjectName copy, "stozar scena"
+		Rhino.ObjectLayer copy, "Default"
+		Param = Rhino.CurveClosestPoint(krivka, point)
+		tecna = Rhino.CurveTangent(krivka, Param)
+		uhel = Rhino.Asin(tecna(0))
+		
+		Rhino.RotateObject copy,point,uhel
+		
+		i = i + 1
+	Next
+	
+	
+	
+
+
+	
+	
+	
+	Rhino.LayerVisible vrstva, False
+	Rhino.LayerLocked vrstva, True
+End Sub

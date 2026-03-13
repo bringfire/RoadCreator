@@ -1,0 +1,110 @@
+Option Explicit
+'Script written by <Adam Orlický>
+'Script copyrighted by <insert company name>
+'Script version 23. června 2015 11:11:23
+Call TravaMesh()
+
+Function Joinmore(objects)
+	Dim pieces,pomoc
+	Rhino.EnableRedraw vbFalse
+	If (Ubound(Objects)) = 0Then
+		pomoc = Rhino.CopyObject(objects(0), Array(0, 0, 0), Array(0, 0, 0))
+		joinmore = pomoc
+	Else
+		For Each pieces In objects
+			Call Rhino.Command("_SelID " & pieces & "_Enter", 0)
+		Next
+		Call Rhino.Command("_Join", 0)
+		pomoc = Rhino.LastCreatedObjects
+		joinmore = pomoc(0)
+	End If
+	Rhino.UnselectAllObjects
+	Rhino.EnableRedraw vbTrue
+End Function
+
+
+Sub TravaMesh()
+	Dim Teren,Krajnice,Direction,pieces
+	
+	'Vyber terenu
+	Teren = Rhino.GetObjects("Vyber terén", 32)
+	If IsNull(Teren) Then
+		Rhino.Print "Nevybral jste terén"
+		Exit Sub
+	End If
+	If (Ubound(Teren)) > 0Then
+		For Each pieces In Teren
+			rhino.CopyObject pieces, Array(0, 0, 0), Array(0, 0, 0)
+		Next
+	End If
+
+	
+	Krajnice = Rhino.GetObject("Vyber krajnici", 4)
+	If IsNull(Krajnice) Then
+		Rhino.Print "Nevybral jste krajnici"
+		Exit Sub
+	End If
+	
+	Direction = Rhino.GetPoint("Vyber směr od krajnice, kde má dojít k zatravnění")
+	If IsNull(Direction) Then
+		Rhino.Print "Nevybral jste směr"
+		Exit Sub
+	End If
+	Rhino.EnableRedraw vbFalse
+	Dim Terenpomoc
+	Terenpomoc = joinmore(Teren)
+	
+	'Usecka 4 m
+	Dim Linebase,Base
+	Linebase = Rhino.AddLine(Array(-2, 0, 0), Array(2, 0, 0))
+	Base = Array(0, 0, 0)
+	
+	'Sázení ploch
+	Dim curve (1) , i , arrPoints(1),arrPoint,copy,promcopy
+	i = 0
+	
+	If Rhino.IsLayer("Trava") Then
+		Rhino.CurrentLayer("Trava")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Trava", RGB(0, 160, 0))
+		Rhino.CurrentLayer("Trava")
+	End If
+	Dim   randrotate,Travaplocha
+	Rhino.Print"Pracuji"
+	Do While i < 2
+		Rhino.EnableRedraw vbFalse
+		curve(i) = Rhino.OffsetCurve(Krajnice, Direction, 2 * i + 2)
+		arrPoints(i) = Rhino.DivideCurveEquidistant(curve(i)(0), 0.8)
+		Rhino.DeleteObjects(curve(i))
+		
+		For Each arrPoint In arrPoints(i)
+		
+			copy = Rhino.CopyObjects(Linebase, Base, arrPoint)
+		
+			Randomize
+			randrotate = ((360 ) * Rnd )
+			Rhino.RotateObjects copy, arrPoint, randrotate
+			
+			promcopy = Rhino.ProjectCurveToMesh(copy, Terenpomoc, Array(0, 0, 1))
+			If Not IsNull(promcopy) Then
+				Travaplocha = Rhino.ExtrudeCurveStraight(promcopy(0), Array(0, 0, 0), Array(0, 0, 0.5))
+				Rhino.ObjectLayer Travaplocha, "Trava"
+				Rhino.DeleteObjects promcopy
+			End If
+			Rhino.DeleteObjects copy
+			
+		Next
+		i = i + 1
+	Loop
+	
+	Rhino.DeleteObject 
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.Print"Byla vytvorena trava"
+	Rhino.EnableRedraw vbTrue
+End Sub

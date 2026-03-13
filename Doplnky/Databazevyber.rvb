@@ -1,0 +1,161 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 21. března 2016 13:17:40
+
+Call Databazevyber()
+Sub Databazevyber()
+	
+	Rhino.EnableRedraw vbFalse
+	If Rhino.IsLayer("DATABAZE") Then
+		Rhino.LayerLocked "DATABAZE", False
+		Rhino.LayerVisible "DATABAZE", True
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("DATABAZE", RGB(0, 0, 0))
+	End If
+	Dim LayerObjects,NameObjects
+	LayerObjects = Rhino.ObjectsByLayer("DATABAZE")
+	If isnull(LayerObjects) Then
+		Rhino.Print"Databaze je prazdna"
+		Rhino.LayerLocked "DATABAZE", True
+		Rhino.LayerVisible "DATABAZE", False
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	NameObjects = Rhino.ObjectNames(LayerObjects)
+
+	'VYtvoreni seznamu objektu
+	Dim i,NameObject,LastName,Jmenaobjektu,Minulajmena(),jmeno,ilength,Add,p,obj
+	Lastname = "asdfnkadvgowf7543asdvafnd554"
+	ReDim Jmenaobjektudatabaze(Ubound(LayerObjects))
+	i = 0
+	Jmenaobjektu = Null
+	Rhino.Print"Prohledávám databázi"
+	For Each obj In Layerobjects
+		If Rhino.IsPoint(obj) = True Then
+		Else
+			NameObject = Rhino.ObjectName(obj)
+			If Not IsNull(NameObject) And Not Lastname = NameObject Then 
+				Add = True
+				If i > 0 Then
+					For Each jmeno In Jmenaobjektu
+						If jmeno = Nameobject Then
+							Add = False
+						End If
+					Next
+				
+					If Add = True Then
+						ReDim Minulajmena(i-1)
+						p = 0
+						For Each jmeno In Jmenaobjektu
+							Minulajmena(p) = jmeno
+							p = p + 1
+						Next
+						ReDim Jmenaobjektu(i)
+					
+						p = 0
+						For Each jmeno In Jmenaobjektu
+							If p = i Then
+								Jmenaobjektu(p) = Nameobject
+							Else
+								Jmenaobjektu(p) = Minulajmena(p)
+							End If
+							p = p + 1
+						Next
+						i = i + 1
+						LastName = Nameobject
+					End If
+		
+				Else
+					ReDim Jmenaobjektu(0)
+					Jmenaobjektu(0) = NameObject
+					i = i + 1
+					LastName = Nameobject
+				End If
+			
+			End If
+		End If
+	
+	Next
+	Rhino.LayerLocked "DATABAZE", True
+	Rhino.LayerVisible "DATABAZE", False
+	Rhino.EnableRedraw vbTrue
+	Dim Vyber
+	If isnull(Jmenaobjektu) Then
+		Rhino.Print"V databazy nejsou pojmenovány objekty"
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	Vyber = Rhino.ListBox(Jmenaobjektu, "Vyber objekt z databaze", "DATABAZE")
+	If isnull(Vyber) Then
+		Rhino.Print"Nic nebylo vybrano"
+		Exit Sub
+	End If
+
+	
+	
+	'Vkladani objektu
+	Dim Teren,Point,pointproject
+	
+	Teren = Rhino.GetObject("Vyber terén", 56)
+	If IsNull(Teren) Then
+		Rhino.Print "Nevybral jste terén"
+		Point = Rhino.GetPoint("Vyber místo umístění objektu")
+		If IsNull(Point) Then
+			Rhino.Print "Nevybral jste bod pro vložení značky"
+			Exit Sub
+		End If
+	Else
+		Point = Rhino.GetpointSurface(Teren, "Vyber místo umístění objektu")
+		If IsNull(Point) Then
+			Rhino.Print "Nevybral jste bod pro vložení značky"
+			Exit Sub
+		
+		End If
+			
+	End If	
+	If Rhino.IsLayer("Objekty z databaze") Then
+		Rhino.CurrentLayer("Objekty z databaze")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Objekty z databaze", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Objekty z databaze")
+	End If
+	
+
+
+	Rhino.EnableRedraw vbFalse
+
+	If Rhino.IsLayer("DATABAZE") Then
+		Rhino.LayerLocked "DATABAZE", False
+		Rhino.LayerVisible "DATABAZE", True
+	End If
+	Dim objekt,objektbaseID,Objektbase,copy,angle,pointrotate
+
+	
+	Objektbase = Array(0, 0, 0)
+	
+	Objekt = Rhino.ObjectsByName(Vyber)
+	ObjektbaseID = Rhino.ObjectsByName(CStr (Vyber) & "-point(RoadCreator)")
+	Objektbase = Rhino.PointCoordinates(ObjektbaseID(0))
+	copy = Rhino.Copyobjects(Objekt, objektbase, Point)
+	Rhino.ObjectLayer copy, "Objekty z databaze"
+	Rhino.Objectname copy, CStr (Vyber) & "-Objekt"
+	Rhino.LayerLocked "DATABAZE", True
+	Rhino.LayerVisible "DATABAZE", False
+	Rhino.EnableRedraw vbTrue
+	pointrotate = Rhino.Getpoint("Vyber uhel pro pootoceni")
+	angle = Rhino.Angle(Array(Point(0), Point(1), 0), Array(pointrotate(0), pointrotate(1), 0))
+	Rhino.RotateObjects copy, Point, angle(0) + 90
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.Print"Byl vložen objekt"
+	
+	
+	
+
+End Sub

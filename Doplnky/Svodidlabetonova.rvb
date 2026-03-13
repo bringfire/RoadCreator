@@ -1,0 +1,118 @@
+Option Explicit
+'Script written by <Adam Orlicky>
+'Script copyrighted by <insert company name>
+'Script version 22. února 2016 17:43:47
+
+Call Svodidlabetonova()
+Sub Svodidlabetonova()
+	Dim Krivka,Tycrez(1),Vzdalenost
+	
+	Krivka = Rhino.GetObject("Vyber krivku konce svodidel pro vlozeni svodidel", 4)
+	If IsNull(Krivka) Then
+		Rhino.Print("Nevybral jste krivku")
+		Exit Sub	
+	End If	
+	'Sloupky
+	
+	Vzdalenost = Rhino.GetReal("Urci vzdalenost mezi sloupky", 2.5)
+	If IsNull(Vzdalenost) Then
+		Rhino.Print("Neurcil si vzdalenost")
+		Exit Sub	
+	End If	
+	
+	Dim Sloupekpoints,Hrany(7),Sloupekbase,i,Sloupek,alfa,beta,base,pombod,Kruznice,Pomline,Kruzniceplocha,prunik
+	Sloupekpoints = Rhino.DivideCurveEquidistant(Krivka, Vzdalenost)
+
+
+	
+	Sloupekbase = Rhino.GetObject("Vyber betonový patník")
+	
+	If IsNull(Sloupekbase) Then
+		Hrany(0) = Array(0, 0, -0.2)
+		Hrany(1) = Array(0.35, 0, -0.2)
+		Hrany(2) = Array(0.35, 0.35, -0.2)
+		Hrany(3) = Array(0, 0.35, -0.2)
+		Hrany(4) = Array(0, 0, 1.2)
+		Hrany(5) = Array(0.35, 0, 1.2)
+		Hrany(6) = Array(0.35, 0.35, 1.2)
+		Hrany(7) = Array(0, 0.35, 1.2)
+		Sloupekbase = Rhino.AddBox(Hrany)
+		base = Array(0.17, 0.17, 0)
+	Else
+		base = Rhino.GetPoint("Vyber pocatek sloupku")
+		If IsNull(base) Then
+			Rhino.Print("Nevybral jste pocatek")
+			Exit Sub
+		End If
+	End If
+	'Vykreslovani
+	Rhino.EnableRedraw vbFalse
+	If Rhino.IsLayer("SvodidlaBetonova") Then
+		Rhino.CurrentLayer("SvodidlaBetonova")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("SvodidlaBetonova", RGB(190, 190, 190))
+		Rhino.CurrentLayer("SvodidlaBetonova")
+	End If
+	
+	Tycrez(0) = Rhino.AddCircle(Array(0, 0, 0.5), 0.05)
+	Tycrez(1) = Rhino.AddCircle(Array(0, 0, 0.9), 0.05)
+	Rhino.rotateobject Tycrez(0), Array(0, 0, 0.5), 90, Array(0, 1, 0)
+	Rhino.rotateobject Tycrez(1), Array(0, 0, 0.9), 90, Array(0, 1, 0)
+	Dim Tycprofilspodni,Tycprofilhorni
+	ReDim Tycprofilspodni(Ubound(Sloupekpoints))
+	ReDim Tycprofilhorni(Ubound(Sloupekpoints))
+	
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	i = 0
+	Do While i =< UBound(Sloupekpoints)
+		Sloupek = Rhino.CopyObjects(Sloupekbase, base, Sloupekpoints(i))
+		Rhino.ObjectLayer Sloupek, "SvodidlaBetonova"
+		Tycprofilspodni(i) = Rhino.CopyObject(Tycrez(0), Array(0, 0, 0), Sloupekpoints(i))
+		Tycprofilhorni(i) = Rhino.CopyObject(Tycrez(1), Array(0, 0, 0), Sloupekpoints(i))
+		Kruznice = Rhino.AddCircle(Sloupekpoints(i), 0.1)
+		Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+		Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+		prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+	
+		If i = 0 Then
+			pombod = Rhino.CurveStartPoint(Krivka)	
+		ElseIf i = UBound(Sloupekpoints) Then
+			pombod = Rhino.CurveEndPoint(Krivka)
+		Else
+			pombod = prunik(1, 1)
+		End If
+	
+		alfa = Rhino.Angle(prunik(0, 1), pombod)
+		Rhino.RotateObjects Sloupek, Sloupekpoints(i), 180 + alfa(0)
+		Rhino.RotateObject Tycprofilspodni(i), Sloupekpoints(i), 180 + alfa(0)
+		Rhino.RotateObject Tycprofilhorni(i), Sloupekpoints(i), 180 + alfa(0)
+		Rhino.DeleteObject Kruznice
+		Rhino.DeleteObject Kruzniceplocha
+		'Tyce
+	
+		i = i + 1
+	Loop
+	
+	If Rhino.IsLayer("Tycesvodidla") Then
+		Rhino.CurrentLayer("Tycesvodidla")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Tycesvodidla", RGB(210, 210, 210))
+		Rhino.CurrentLayer("Tycesvodidla")
+	End If
+	Rhino.AddLoftSrf Tycprofilspodni,,, 2
+	Rhino.AddLoftSrf Tycprofilhorni,,, 2
+	Rhino.DeleteObjects Tycprofilspodni
+	Rhino.DeleteObjects Tycprofilhorni
+	Rhino.DeleteObjects tycrez
+	Rhino.DeleteObjects Sloupekbase
+	Rhino.DeleteObject Pomline
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	
+	Rhino.EnableRedraw vbTrue
+End Sub

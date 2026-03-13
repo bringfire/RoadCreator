@@ -1,0 +1,49 @@
+﻿Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 7. ledna 2016 15:40:57
+
+Call Chodnik()
+Sub Chodnik()
+	Dim Stenaobrubniku,krivka(2),stred,bod,pomkrivka,obrubnik,i,chodnikkrivka(1),chodnik,sirka
+	i = 0
+	
+	Do While i < 1
+		If Rhino.IsLayer("Default") Then
+			Rhino.CurrentLayer("Default")
+		Else 
+			Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+			Rhino.CurrentLayer("Default")
+		End If
+		Rhino.EnableRedraw vbTrue
+		krivka(0) = Rhino.Getobject("Vyber hranu obrubniku", 4)
+		If IsNull(krivka(0)) Then
+			Rhino.Print "Nevybral jste hranu"
+			Exit Sub
+		End If
+		stred = Rhino.GetPoint("Urci misto chodniku")
+		If IsNull(stred) Then
+			Rhino.Print "Nevybral jste misto chodniku"
+			Exit Sub
+		End If
+		sirka = Rhino.GetReal("Zadej sirku chodniku", 5, 0.5, 30)
+		Rhino.EnableRedraw vbFalse
+		If Rhino.IsLayer("Obrubnik") Then
+			Rhino.CurrentLayer("Obrubnik")
+		Else 
+			Rhino.Print "New layer: " & Rhino.AddLayer("Obrubnik", RGB(0, 0, 0))
+			Rhino.CurrentLayer("Obrubnik")
+		End If
+		krivka(1) = Rhino.CopyObject(krivka(0), Array(0, 0, 0), Array(0, 0, 0.2))
+		pomkrivka = Rhino.OffsetCurve(krivka(1), stred, 0.3)
+		krivka(2) = pomkrivka(0)
+		chodnikkrivka(0) = pomkrivka(0)
+		pomkrivka = Rhino.OffsetCurve(krivka(2), stred, 4)
+		chodnikkrivka(1) = pomkrivka(0)
+		
+		obrubnik = Rhino.AddLoftSrf(krivka,,, 2)
+		chodnik = Rhino.AddLoftSrf(chodnikkrivka,,, 2)
+	Loop
+	
+	
+End Sub

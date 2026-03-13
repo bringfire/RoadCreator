@@ -1,0 +1,91 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 3. dubna 2015 21:28:47
+
+Call Vrstevnice()
+Sub Vrstevnice()
+
+	Rhino.Print "New layer: " & Rhino.AddLayer("TEREN", RGB(0, 0, 0))
+	
+	If Not Rhino.IsLayer("Hlavni vrstevnice") Then
+		Rhino.Print "New layer: " & Rhino.AddLayer("Hlavni vrstevnice", RGB(255, 191, 0))
+	End If
+	
+	If Rhino.IsLayer("Vrste vnice") Then
+		Rhino.CurrentLayer("Vrstevnice")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Vrstevnice", RGB(90, 90, 90))
+		Rhino.CurrentLayer("Vrstevnice")
+	End If
+	
+	
+	'Prunik
+	Dim teren, plocha,i,vrstevnice,distance,d
+	teren = Rhino.GetObject("Vyber teren")
+	Rhino.ObjectLayer teren, "TEREN"
+	If IsNull(teren) Then
+		Rhino.Print "Nebyl vybran teren pro tvorbu vrstevnic"
+		Exit Sub
+	End If
+	distance = Rhino.GetReal("Urci po kolika metrech se maji vytvaret vrstevnice", 1, 1, 5)
+	If isNull(distance) Then
+		Rhino.Print "Nezaadal jste hodnotu po kolika metrech se maji vytvaret prechodnice"
+		Exit Sub
+	End If
+	
+	Rhino.EnableRedraw vbFalse
+	Rhino.Print "Pracuji"
+	plocha = Rhino.AddPlaneSurface(Rhino.WorldXYPlane, 1000000, 1000000)
+	Rhino.MoveObject plocha, Array(500000, 500000, 0), Array(0, 0, -250)
+	d = 0
+	i = 0
+	Do While d < 1
+		vrstevnice = Rhino.IntersectBreps(teren, plocha)
+		If IsNull(vrstevnice) Then
+			Rhino.MoveObject plocha, Array(0, 0, 0), Array(0, 0, distance)
+		Else
+			d = 1
+		End If	
+		i = i + 1
+	Loop
+	d = i * distance \ 10
+	Do While i < 2000
+		vrstevnice = Rhino.IntersectBreps(teren, plocha)
+		Rhino.CurrentLayer("Vrstevnice")
+		If Not IsNull(vrstevnice) Then
+			If (i * distance) - ((d + 1) * 10) = 0 Then
+				Rhino.CurrentLayer("Hlavni vrstevnice")
+				i = 0
+				d = 0
+			End If
+			Rhino.MoveObject plocha, Array(0, 0, 0), Array(0, 0, distance)
+			
+		Else
+			Rhino.DeleteObject(plocha)
+			If Rhino.IsLayer("Default") Then
+				Rhino.CurrentLayer("Default")
+			Else 
+				Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+				Rhino.CurrentLayer("Default")
+		
+			End If
+			Rhino.EnableRedraw vbTrue
+			If Rhino.IsLayer("Vrstevnice") Then
+				Rhino.LayerLocked "Vrstevnice", True
+			End If
+			If Rhino.IsLayer("Hlavni vrstevnice") Then
+				Rhino.LayerLocked "Hlavni vrstevnice", True
+			End If
+			If Rhino.IsLayer("TEREN") Then
+				Rhino.LayerLocked "TEREN", True
+			End If
+			Rhino.Print "Byly vytvoreny vrstevnice"
+			Exit Sub
+		End If
+		i = i + 1
+	Loop
+
+
+
+End Sub

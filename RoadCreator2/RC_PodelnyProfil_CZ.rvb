@@ -1,0 +1,321 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version středa 3. ledna 2018 11:59:53
+
+Call RC_PodelnyProfil_CZ()
+Sub RC_PodelnyProfil_CZ()
+
+	
+
+	Dim version,ts
+	version = Rhino.ExeVersion
+	ts = 1
+	If version = 6 Then
+		ts = 1000
+	End If
+	
+	Dim osa(3),teren,kotvzd,pocatek,nameparts,projectosa,oblouky,part,i,po
+	i = 0
+	Rhino.LayerLocked "Vrstevnice", True
+	osa(0) = rhino.GetObject("Vyber osu trasi pro vygenerování podélného profilu", 4)
+	If IsNull(osa(0)) Then
+		Rhino.Print "Nevybral jste osu trasi"
+		Rhino.LayerLocked "Vrstevnice", False
+		Exit Sub
+	Else
+		nameparts = Rhino.Strtok(Rhino.ObjectName(osa(0)), " ")
+		osa(1) = nameparts(0)
+		osa(2) = nameparts(1)
+		If Not osa(2) = 1 Then
+			oblouky = Rhino.Strtok(nameparts(2), ";")
+			For Each part In oblouky
+				oblouky(i) = Rhino.Strtok(oblouky(i), "_")
+				i = i + 1
+			Next
+		End If
+		osa(3) = Rhino.CurveLength(osa(0))
+	End If
+	
+	'Vlozeni konce useku
+	Dim curvepar,endpoint,tangent,gama,copy,text
+	endpoint = Rhino.CurveEndPoint(osa(0))
+	curvepar = Rhino.CurveClosestPoint(osa(0), endpoint)
+	tangent = Rhino.CurveTangent(osa(0), curvepar)
+	gama = Rhino.Angle(Array(0, 0, 0), tangent)
+	copy = Rhino.AddLine(Array(0, 0, 0), Array(33, 0, 0))
+	Rhino.MoveObject copy, Array(0, 0, 0), endpoint
+	Rhino.RotateObject copy, endpoint, gama(0) - 90
+	
+	text = Rhino.AddText("KÚ km " + Cstr(Round(Rhino.CurveLength(osa(0)) / 1000, 6)), Array(0, 0, 0), 4 / ts)
+	Rhino.MoveObject text, Array(-2, -0.5, 0), endpoint
+	Rhino.RotateObject text, endpoint, gama(0) - 90
+	Rhino.ObjectLayer text, osa(1) + "::Tečnový polygon::Staničení"
+	Rhino.ObjectLayer copy, osa(1) + "::Tečnový polygon::Staničení"
+	Rhino.ObjectName text, osa(1) + " " + osa(2) + " R KÚ"
+	Rhino.ObjectName copy, osa(1) + " " + osa(2) + " R KÚ"
+	
+	endpoint = rhino.AddPoint(Rhino.CurveEndPoint(osa(0)))
+	Rhino.ObjectLayer endpoint, osa(1) + "::Tečnový polygon::Staničení::Staničení body"
+	Rhino.ObjectName endpoint, osa(1) + " " + osa(2) + " R KÚ " + Cstr(osa(3))
+	
+	'Vyber terenu
+	If Rhino.IsLayer("3D model terénu") Then
+		Rhino.LayerVisible "3D model terénu", True
+	End If
+	
+	teren = Rhino.Getobject("Vyber terén", 56)
+	If IsNull(teren) Then
+		Rhino.Print "Nevybral jste teren"
+		Rhino.LayerLocked "Vrstevnice", False
+		Exit Sub
+	Else
+		Rhino.LayerVisible "3D model terénu", False
+	End If
+	
+	
+	po = 20
+	po = Rhino.GetReal("Zadej hodnotu vzdálenosti kótování", 20, 10, 50)
+	'Vyber pocatku
+	pocatek = Rhino.Getpoint("Vyber počátek pro vykreslení podélného profilu")
+	If IsNull(pocatek) Then
+		Rhino.Print "Nevybral jste pocatek"
+		Rhino.LayerLocked "Vrstevnice", False
+		Exit Sub
+	End If
+	
+	Rhino.EnableRedraw vbtrue
+	Rhino.Print"Pracuji"
+	'Promítnutí osy
+	Rhino.AddLayer "Trasa teren", RGB(0, 180, 0)
+	If Rhino.IsMesh(teren) = True Then
+		projectosa = Rhino.ProjectCurveToMesh(osa(0), teren, Array(0, 0, 1))
+	Else
+		projectosa = Rhino.ProjectCurveTosurface(osa(0), teren, Array(0, 0, 1))
+	End If
+	Rhino.ObjectLayer projectosa, "Trasa teren"
+	Rhino.ObjectName projectosa, osa(1) + "Trasa_terén"
+	Rhino.LayerLocked "Trasa teren", True
+	Rhino.ParentLayer "Trasa teren", osa(1)
+	
+	
+	'Vyber dulezitych bodu
+	Dim body,bod,bodyID,sortval,sortbody,Dvysky,projectbod,bodsouradnice,name
+	body = rhino.Objectsbylayer(osa(1) + "::Tečnový polygon::Staničení::Staničení body")
+	ReDim bodyID(Ubound(body))
+	ReDim sortval(Ubound(body))
+	ReDim Dvysky(Ubound(body))
+	i = 0
+	For Each bod In body
+		name = Rhino.ObjectName(bod)
+		bodyID(i) = Rhino.Strtok(name, " ")
+		sortval(i) = CDbl(bodyID(i)(4))
+		bodsouradnice = Rhino.PointCoordinates(bod)
+		If Rhino.IsMesh(teren) = True Then
+			projectbod = Rhino.ProjectPointToMesh(bodsouradnice, teren, Array(0, 0, 1))
+		Else
+			projectbod = Rhino.ProjectPointTosurface(bodsouradnice, teren, Array(0, 0, 1))
+		End If
+		Dvysky(i) = projectbod(0)(2)
+		Rhino.ObjectName bod, name
+		i = i + 1
+	Next
+	sortbody = Rhino.SortNumbers(sortval, True)
+	
+	'Sortovani dat
+	Dim dulbody,p
+	ReDim dulbody(Ubound(body))
+	i = 0
+	Do While i < ubound(body) + 1
+		p = 0
+		Do Until sortbody(i) = sortval(p)
+			p = p + 1
+		Loop
+		dulbody(i) = Array(body(p), bodyID(p)(1), bodyID(p)(2), bodyID(p)(3), bodyID(p)(4), Dvysky(p))
+		i = i + 1
+	Loop
+	
+		
+	'Tvorba os a vrstev
+	Rhino.AddLayer "Podélný profil", RGB(0, 0, 0)
+	Rhino.AddLayer "Směrové vedení", RGB(0, 0, 255)
+	Rhino.CurrentLayer "Podélný profil"
+	Rhino.addline pocatek, Array(pocatek(0) + osa(3), pocatek(1), 0)
+	
+	i = 0
+	If osa(3) > 1000 Then
+		Do While i * 100 < osa(3)
+			Rhino.AddCircle Array(pocatek(0) + (i * 100), pocatek(1), 0), 2.5
+			If i Mod 10 = 0 Or i = 0 Then
+				Rhino.AddText Cstr(i / 10) + " km", Array(pocatek(0) + (i * 100), pocatek(1) - 6.5, 0), 7 / ts,, 1, 4
+			Else
+				Rhino.AddText Cstr(i / 10) + " km", Array(pocatek(0) + (i * 100), pocatek(1) - 6, 0), 5 / ts,,, 4
+			End If
+			i = i + 1
+		Loop
+	Else
+		Do While i * 50 < osa(3)
+			Rhino.AddCircle Array(pocatek(0) + (i * 50), pocatek(1), 0), 2.5
+			If i Mod 10 = 0 Or i = 0 Then
+				Rhino.AddText Cstr(i / 20) + " km", Array(pocatek(0) + (i * 50), pocatek(1) - 6.5, 0), 7 / ts,, 1, 4
+			Else
+				Rhino.AddText Cstr(i / 20) + " km", Array(pocatek(0) + (i * 50), pocatek(1) - 6, 0), 5 / ts,,, 4
+			End If
+			i = i + 1
+		Loop
+	End If
+	
+	
+
+	'Smerove vedeni
+	Dim smerbody,smercurve,o
+	i = 0
+	p = 0
+	o = 0
+	ReDim smerbody (ubound(dulbody))
+	Rhino.CurrentLayer "Směrové vedení"
+	Do While i < Ubound(dulbody) + 1
+		If dulbody(i)(2) = "R" Then
+			smerbody(i) = Array(pocatek(0) + dulbody(i)(4), pocatek(1) - 40, 0)
+			p = 0
+		ElseIf dulbody(i)(2) = "L" Then
+			smerbody(i) = Array(pocatek(0) + dulbody(i)(4), pocatek(1) - 20, 0)
+			p = p + 1
+			If p = 2 Then
+				text = rhino.AddText("R= " + oblouky(o)(2) + " m", Array(pocatek(0) + (CDbl(dulbody(i)(4)) + CDbl(dulbody(i - 1)(4))) / 2, pocatek(1) - 40, 0), 7 / ts,,, 4)
+				o = o + 1				
+			End If
+			
+		ElseIf dulbody(i)(2) = "P" Then
+			smerbody(i) = Array(pocatek(0) + dulbody(i)(4), pocatek(1) - 60, 0)
+			p = p + 1
+			If p = 2 Then
+				text = rhino.AddText("R= " + oblouky(o)(2) + " m", Array(pocatek(0) + (CDbl(dulbody(i)(4)) + CDbl(dulbody(i - 1)(4))) / 2, pocatek(1) - 40, 0), 7 / ts,,, 4)
+				o = o + 1				
+			End If
+		End If
+		Rhino.AddLine Array(smerbody(i)(0), smerbody(i)(1) - 2.5, 0), Array(smerbody(i)(0), smerbody(i)(1) + 2.5, 0)
+		Rhino.AddText dulbody(i)(3), Array(smerbody(i)(0), smerbody(i)(1) - 10, 0), 6 / ts,,, 4
+		Rhino.AddText "km " + Cstr(Round(dulbody(i)(4) / 1000, 6)), Array(smerbody(i)(0), smerbody(i)(1) - 20, 0), 5 / ts,,, 4
+		i = i + 1
+	Loop
+	
+	
+	'Koty
+	Rhino.AddText "SMĚROVÉ VEDENÍ", Array(pocatek(0) - 150, pocatek(1) - 45, 0), 9 / ts,,, 0
+	Rhino.AddText "Levá", Array(pocatek(0) - 50, pocatek(1) - 29, 0), 6 / ts
+	Rhino.AddText "Pravá", Array(pocatek(0) - 50, pocatek(1) - 59, 0), 6 / ts
+
+	smercurve = Rhino.AddPolyline(smerbody)
+	Rhino.LayerLocked "Směrové vedení", False
+	Rhino.ParentLayer "Směrové vedení", "Podélný profil"
+	
+	Rhino.CurrentLayer "Podélný profil"
+	Rhino.LayerLocked "Podélný profil", False
+	text = Rhino.AddText("PODÉLNÝ PROFIL - " + osa(1), Array(pocatek(0), pocatek(1) - 155, 0), 25 / ts,,, 0)
+	text = Rhino.AddText("KÓTA TERÉNU", Array(pocatek(0) - 150, pocatek(1) + 30, 0), 9 / ts,,, 0)
+	
+	
+	'GENEROVANI PODELNEHO PROFILU
+	Dim terenbody,vysky,min,vyska
+	terenbody = Rhino.DivideCurveLength(osa(0), 2)
+	ReDim vysky (Ubound(terenbody))
+	i = 0
+	
+	min = 1000000000000
+	For Each bod In terenbody
+		If Rhino.IsMesh(teren) = True Then
+			projectbod = Rhino.ProjectPointToMesh(bod, teren, Array(0, 0, 1))
+		Else
+			projectbod = Rhino.ProjectPointTosurface(bod, teren, Array(0, 0, 1))
+		End If
+		If projectbod(0)(2) < min Then
+			min = projectbod(0)(2)
+		End If
+		vysky(i) = Array(projectbod(0)(2), i * 2)
+		i = i + 1
+	Next
+	
+	If osa(3) > (i - 1) * 2 Then
+		ReDim Preserve vysky(Ubound(terenbody)+1)
+		endpoint = Rhino.CurveEndPoint(osa(0))
+		If Rhino.IsMesh(teren) = True Then
+			projectbod = Rhino.ProjectPointToMesh(endpoint, teren, Array(0, 0, 1))
+		Else
+			projectbod = Rhino.ProjectPointTosurface(endpoint, teren, Array(0, 0, 1))
+		End If
+		If projectbod(0)(2) < min Then
+			min = projectbod(0)(2)
+		End If
+		vysky(i) = Array(projectbod(0)(2), osa(3))
+	End If
+		
+	
+	'Urceni srovnavaci hladiny
+	Dim srovnavacihladina
+	srovnavacihladina = ((min \ 10) - 1) * 10
+	text = Rhino.addtext("Srovnávací hladina: " + Cstr(srovnavacihladina) + " m", Array(pocatek(0), pocatek(1) - 110, 0), 15 / ts,,, 0)
+
+	'Tvorba podelneho profilu
+	Rhino.AddLayer "Kóty", RGB(0, 0, 0)
+	Rhino.CurrentLayer "Kóty"
+	Rhino.LayerLocked "Kóty", False
+	Dim Ppoints,Pcurve
+	ReDim PPoints (Ubound(vysky))
+	i = 0
+	For Each vyska In vysky
+		PPoints(i) = Array(pocatek(0) + vyska(1), pocatek(1) + ((vyska(0) - srovnavacihladina) * 10), 0)
+		If vyska(1) = 0 Or vyska(1) = osa(3) Or vyska(1) Mod po = 0 Then
+			Rhino.AddLine Array(PPoints(i)(0), pocatek(1), 0), Array(PPoints(i)(0), pocatek(1) + 20, 0)
+			Rhino.AddLine Array(PPoints(i)(0), pocatek(1) + 50, 0), PPoints(i)
+			text = Rhino.AddText(Cstr(Round(vyska(0), 2)), Array(PPoints(i)(0), pocatek(1) + 35, 0), 5 / ts,,, 4)
+			Rhino.RotateObject text, Array(PPoints(i)(0), pocatek(1) + 35, 0), 90
+		End If
+		i = i + 1
+	Next
+	Rhino.AddLayer "Profil terén", RGB(0, 100, 0)
+	Rhino.CurrentLayer "Profil terén"
+	Rhino.LayerLocked "Profil terén", True
+	PCurve = rhino.AddInterpCurve(PPoints)
+	
+	'vykresleni dulezitych bodu
+	Rhino.AddLayer "Důležité body", RGB(255, 0, 0)
+	Rhino.CurrentLayer "Důležité body"
+	Rhino.LayerLocked "Důležité body", False
+	i = 0
+	For Each bod In dulbody
+		
+		Rhino.AddLine Array(pocatek(0) + bod(4), pocatek(1), 0), Array(pocatek(0) + bod(4), pocatek(1) + 20, 0)
+		Rhino.AddLine Array(pocatek(0) + bod(4), pocatek(1) + 50, 0), Array(pocatek(0) + bod(4), pocatek(1) + ((bod(5) - srovnavacihladina) * 10), 0)
+		text = Rhino.AddText(Cstr(Round(bod(5), 2)), Array(pocatek(0) + bod(4), pocatek(1) + 35, 0), 5/ts, ,, 4)
+		Rhino.RotateObject text, Array(pocatek(0) + bod(4), pocatek(1) + 35, 0), 90
+		
+		i = i + 1
+	Next
+	
+	'HLAVNI BOD
+	Dim hlavnibod
+	hlavnibod = Rhino.AddPoint(pocatek)
+	Rhino.ObjectName hlavnibod, osa(1) + " Podélný_profil " + Cstr(srovnavacihladina)
+	Rhino.ObjectLayer hlavnibod, "Podélný profil"
+	
+	'Uprava vrstev
+	Rhino.CurrentLayer osa(1)
+	'Zamykaní
+	Rhino.LayerLocked "Kóty", True
+	Rhino.LayerLocked "Důležité body", True
+	Rhino.LayerLocked "Profil terén", True
+	Rhino.LayerLocked "Podélný profil", True
+	Rhino.LayerLocked "Trasa teren", True
+	
+	Rhino.ParentLayer "Důležité body", "Profil terén"
+	Rhino.ParentLayer "Kóty", "Profil terén"
+	Rhino.ParentLayer  "Profil terén", "Podélný profil"
+	Rhino.ParentLayer   "Podélný profil", osa(1)
+	Rhino.ExpandLayer "Terén", False
+
+	Rhino.EnableRedraw vbTrue
+	Rhino.Print"Byl vytvořen podelný profil pro " + osa(1)
+
+	
+End Sub

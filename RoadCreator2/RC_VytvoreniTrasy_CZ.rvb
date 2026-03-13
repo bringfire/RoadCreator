@@ -1,0 +1,268 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version pátek 5. ledna 2018 11:12:37
+
+Call RC_VytvoreniTrasy_CZ()
+
+Function DoSplit(object, cutter)
+	Dim cmd
+	cmd = "_Split _SelID " & object & " _Enter _SelID " & cutter & " _Enter"
+	Call Rhino.Command(cmd, 0)
+	DoSplit = Rhino.LastCreatedObjects
+End Function
+
+Sub RC_VytvoreniTrasy_CZ()
+
+	Dim version,ts
+	version = Rhino.ExeVersion
+	ts = 1
+	If version = 6 Then
+		ts = 1000
+	End If
+	
+	Dim vrstvy,vrstva,vrstvyvyber(),name,part,i
+	i = 0
+	vrstvy = Rhino.LayerNames
+	For Each vrstva In vrstvy
+		part = Rhino.Strtok(vrstva, "::")
+		If Ubound(part) = 0 Then
+			If part(0) = "Terén" Then
+			ElseIf part(0) = "Default" Then
+			ElseIf part(0) = "3D model terénu" Then
+			Else
+				
+				ReDim Preserve vrstvyvyber(i)
+				vrstvyvyber(i) = part(0)
+				i = i + 1
+			End If
+		End If
+	Next
+	
+	If isnull(vyber)Then
+		Rhino.Print("Neexistuje žádný návrh trati")
+		Exit Sub
+	End If
+	
+	Dim vyber,vybery
+	vyber = Rhino.ListBox(vrstvyvyber, "Vyber silnici pro vytvoreni 3D trasy", "RailCreator")
+	If isnull(vyber)Then
+		Rhino.Print("Nebyla vybrána trasa silnici")
+		Exit Sub
+	End If
+	
+	
+	If Rhino.IsLayer(vyber + "::3D trasa") = True Then
+		Rhino.Print("3D trasa již existuje")
+		Exit Sub
+	End If
+	
+	Rhino.EnableRedraw vbFalse
+	Rhino.Print"Pracuji"
+	Dim osa,niveleta,srovnavacihladina,pocatek
+	Rhino.UnselectAllObjects
+	
+	'Pocatek a srovnavaci hladina
+	
+	vybery = Rhino.ObjectsByLayer(vyber + "::Podélný profil")
+	For Each part In vybery
+		If Rhino.IsPoint(part) = True Then
+			name = Rhino.ObjectName(part)
+			If Not isnull(name) Then
+				pocatek = part
+				part = Rhino.Strtok(name, " ")
+				srovnavacihladina = Cdbl(part(2))
+				pocatek = rhino.PointCoordinates(pocatek)
+			End If
+		End If		
+	Next
+	
+	If isnull(pocatek)Then
+		Rhino.Print("Neexistuje pocatecny bod podelneho profilu")
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	
+	If isnull(srovnavacihladina)Then
+		Rhino.Print("Nazev vyskoveho profilu je v chybnem tvaru")
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	
+	'vyber nivelety
+	vybery = Rhino.ObjectsByLayer(vyber + "::Niveleta")
+	For Each part In vybery
+		name = Rhino.ObjectName(part)
+		If Not isnull(name) Then
+			niveleta = part
+		End If		
+	Next
+	
+	If isnull(niveleta)Then
+		Rhino.Print("Nebyla nalezena niveleta navrhovane zeleznice")
+		Rhino.MessageBox("Navrhněte niveletu")
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	
+	'vyber osy
+	Dim nameparts,cislo
+	vybery = Rhino.ObjectsByLayer(vyber + "::Tečnový polygon")
+	For Each part In vybery
+		name = Rhino.ObjectName(part)
+		nameparts = Rhino.Strtok(name, " ")
+		If  nameparts(1) = Cstr(Ubound(vybery) + 1) Then
+			osa = part
+		End If		
+	Next
+	
+	If isnull(osa)Then
+		Rhino.Print("Nebyla nalezena osa navrhovane zeleznice")
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	
+	Rhino.EnableRedraw vbFalse
+	Rhino.Print "Pracuji"
+
+	'Vykresleni Trasy
+	Dim Opoints,TPoints,Point,Line,presnost,prusecik,vyska
+	presnost = 2
+	Opoints = Rhino.DivideCurveLength(osa, presnost)
+	Line = Rhino.AddLine(Array(0, 0, 0), Array(0, 1000000, 0))
+	Rhino.MoveObject Line, Array(0, 0, 0), pocatek
+	
+	ReDim TPoints(Ubound(Opoints))
+	i = 0
+	For Each point In OPoints
+		prusecik = Rhino.CurveCurveIntersection(Line, Niveleta)
+		vyska = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+		TPoints(i) = Array(OPoints(i)(0), OPoints(i)(1), vyska)
+		Rhino.MoveObject Line, Array(0, 0, 0), Array(presnost, 0, 0)
+		i = i + 1
+	Next
+	Rhino.DeleteObject Line
+	
+	
+	If presnost * Ubound(Opoints) < Rhino.CurveLength(osa) Then
+		ReDim Preserve OPoints(Ubound(OPoints)+1)
+		ReDim Preserve TPoints(Ubound(OPoints))
+		OPoints(Ubound(OPoints)) = Rhino.CurveEndPoint(osa)
+		prusecik = rhino.CurveEndPoint(niveleta)
+		vyska = srovnavacihladina + ((prusecik(1) - pocatek(1)) / 10)
+		TPoints(Ubound(OPoints)) = Array(OPoints(i)(0), OPoints(i)(1), vyska)
+	End If
+
+	'Generovani 3D trasy
+	Dim Tline
+	Rhino.AddLayer "3D Trasa", RGB(255, 0, 0)
+	Rhino.AddLayer "3D důležité body", RGB(0, 0, 255)
+	Tline = Rhino.AddInterpCurve(TPoints)
+	Rhino.ObjectName Tline, vyber + " 3DTrasa"
+	'Vkladani dulezitych 3D bodů
+	Dim body,bod,bodyID,souradnicebodu,bodsouradnice,dulbod3D,D
+	body = rhino.Objectsbylayer(vyber + "::Tečnový polygon::Staničení::Staničení body")
+	ReDim bodyID(Ubound(body))
+	
+	i = 0
+	For Each bod In body
+		name = Rhino.ObjectName(bod)
+		bodyID(i) = Rhino.Strtok(name, " ")
+		Line = Rhino.AddLine(Array(pocatek(0) + Cdbl(bodyID(i)(4)), pocatek(1), 0), Array(pocatek(0) + Cdbl(bodyID(i)(4)), pocatek(1) + 10000000, 0))
+		prusecik = Rhino.CurveCurveIntersection(Line, Niveleta)
+		vyska = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+		Rhino.DeleteObject Line
+		souradnicebodu = Rhino.PointCoordinates(bod)
+		
+
+	
+		'3D bod
+		dulbod3D = Rhino.AddPoint(Array(souradnicebodu(0), souradnicebodu(1), vyska))
+		Rhino.ObjectName dulbod3D, bodyID(i)(0) + " " + bodyID(i)(2) + " " + bodyID(i)(4)
+		Rhino.ObjectLayer dulbod3D, "3D důležité body"
+		i = i + 1
+	Next
+
+	'Tvorba popicek nivelety do podelnaku
+
+	Dim koty,pomline(1),kota,pompoint,castkoty,castkoty2,VyskaN,text
+	pomline(0) = rhino.AddLine(Array(pocatek(0), pocatek(1) + 65, 0), Array(pocatek(0) + Rhino.CurveLength(osa) + 20, pocatek(1) + 65, 0))
+	pomline(1) = rhino.CopyObject(pomline(0), Array(0, 0, 0), Array(0, 30, 0))	
+	
+	Rhino.LayerLocked vyber + "::Podélný profil::Profil terén::Kóty", False
+	Rhino.CurrentLayer vyber + "::Podélný profil::Profil terén::Kóty"
+	text = Rhino.AddText("KÓTA NIVELETY", Array(pocatek(0) - 150, pocatek(1) + 75, 0), 9 / ts,,, 0)
+	Rhino.Objectcolor text, RGB(255, 0, 0)
+	koty = Rhino.ObjectsByLayer(vyber + "::Podélný profil::Profil terén::Kóty")
+	For Each kota In koty
+		If rhino.IsCurve(kota) Then
+			prusecik = Rhino.CurveCurveIntersection(kota, pomline(0))
+			If Not isnull(prusecik)Then
+				pompoint = rhino.Addpoint(prusecik(0, 1))
+				castkoty = Dosplit(kota, pompoint)
+				Rhino.DeleteObject pompoint
+				prusecik = Rhino.CurveCurveIntersection(castkoty(1), pomline(1))
+				pompoint = Rhino.AddPoint(prusecik(0, 1))
+				castkoty2 = Dosplit(castkoty(1), pompoint)
+				Rhino.DeleteObject pompoint
+				Rhino.DeleteObject castkoty2(0)
+				
+				Line = Rhino.AddLine(Array(prusecik(0, 1)(0), pocatek(1), 0), Array(prusecik(0, 1)(0), pocatek(1) + 10000000, 0))
+				prusecik = Rhino.CurveCurveIntersection(niveleta, Line)
+				VyskaN = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+	
+				text = Rhino.AddText(Cstr(Round(vyskaN, 2)), Array(prusecik(0, 1)(0), pocatek(1) + 80, 0), 5 / ts,,, 4)
+				Rhino.Objectcolor text, RGB(255, 0, 0)
+				Rhino.RotateObject text, Array(prusecik(0, 1)(0), pocatek(1) + 80, 0), 90
+				Rhino.DeleteObject Line
+			End If
+		End If
+	Next
+	
+	Rhino.LayerLocked vyber + "::Podélný profil::Profil terén::Důležité body", False
+	Rhino.CurrentLayer vyber + "::Podélný profil::Profil terén::Důležité body"
+	text = Rhino.AddText("KÓTA NIVELETY", Array(pocatek(0) - 150, pocatek(1) + 75, 0), 9 / ts,,, 0)
+	Rhino.Objectcolor text, RGB(255, 0, 0)
+	koty = Rhino.ObjectsByLayer(vyber + "::Podélný profil::Profil terén::Důležité body")
+	For Each kota In koty
+		If rhino.IsCurve(kota) Then
+			prusecik = Rhino.CurveCurveIntersection(kota, pomline(0))
+			If Not isnull(prusecik)Then
+				pompoint = rhino.Addpoint(prusecik(0, 1))
+				castkoty = Dosplit(kota, pompoint)
+				Rhino.DeleteObject pompoint
+				prusecik = Rhino.CurveCurveIntersection(castkoty(1), pomline(1))
+				pompoint = Rhino.AddPoint(prusecik(0, 1))
+				castkoty2 = Dosplit(castkoty(1), pompoint)
+				Rhino.DeleteObject pompoint
+				Rhino.DeleteObject castkoty2(0)
+				
+				Line = Rhino.AddLine(Array(prusecik(0, 1)(0), pocatek(1), 0), Array(prusecik(0, 1)(0), pocatek(1) + 10000000, 0))
+				prusecik = Rhino.CurveCurveIntersection(niveleta, Line)
+				VyskaN = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+	
+				text = Rhino.AddText(Cstr(Round(vyskaN, 2)), Array(prusecik(0, 1)(0), pocatek(1) + 80, 0), 5/ts,,, 4)
+				Rhino.Objectcolor text, RGB(255, 0, 0)
+				Rhino.RotateObject text, Array(prusecik(0, 1)(0), pocatek(1) + 80, 0), 90
+				Rhino.DeleteObject Line
+			End If
+		End If
+	Next
+	Rhino.LayerLocked vyber + "::Podélný profil::Profil terén::Důležité body", True
+	
+	Rhino.EnableRedraw vbTrue
+	Rhino.CurrentLayer "Default"
+	
+	Rhino.DeleteObject pomline(0)
+	Rhino.DeleteObject pomline(1)
+	
+	Rhino.ObjectName Tline, vyber + " 3DTrasa"
+	Rhino.ObjectLayer Tline, "3D Trasa"
+	Rhino.LayerLocked "3D důležité body", True
+	Rhino.ParentLayer "3D důležité body", "3D Trasa"
+	Rhino.ParentLayer "3D Trasa", vyber
+	
+	Rhino.LayerLocked vyber + "::Tečnový polygon", True
+	Rhino.LayerVisible vyber + "::Trasa teren", False
+	Rhino.Print "Byla vytvořena trasa " + vyber 
+End Sub

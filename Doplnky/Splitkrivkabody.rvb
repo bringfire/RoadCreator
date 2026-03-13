@@ -1,0 +1,50 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 22. března 2016 9:25:04
+
+Call Splitkrivkabody()
+Function DoSplit(object, cutter)
+	Dim cmd
+	cmd = "_Split _SelID " & object & " _Enter _SelID " & cutter & " _Enter"
+	Call Rhino.Command(cmd, 0)
+	DoSplit = Rhino.LastCreatedObjects
+	
+End Function
+
+Sub Splitkrivkabody()
+	Dim krivka,bod(1),split,point(1)
+	krivka = Rhino.GetObject("Vyber křivku pro rozdělení", 4)
+	If isnull(krivka) Then
+		Rhino.Print" Nebyla vybrána křivka"
+		Exit Sub
+	End If
+	
+	bod(0) = Rhino.GetPointOnCurve(krivka, "Vyber 1. bod ")
+	If isnull(bod(0)) Then
+		Rhino.Print" Nebyl vybrán bod"
+		Exit Sub
+	End If
+
+	bod(1) = Rhino.Getpointoncurve(krivka, "Vyber 2. bod ")
+	If isnull(bod(1)) Then
+		Rhino.EnableRedraw vbFalse
+		point(0) = Rhino.AddPoint(bod(0))
+		DOSplit krivka, point(0)
+		Rhino.Deleteobject point(0)
+		Rhino.EnableRedraw vbTrue
+		Rhino.print "Nebyl vybrán druhy bod"
+		Exit Sub
+	End If
+	
+	Rhino.EnableRedraw vbFalse
+	point(0) = Rhino.AddPoint(bod(0))
+	point(1) = Rhino.AddPoint(bod(1))
+	split = DOSplit(krivka, point(0))
+	DoSplit split(0), point(1)
+	DoSplit split(1), point(1)
+	Rhino.EnableRedraw vbTrue
+	Rhino.DeleteObjects point
+	Rhino.Print "Krivka byla rozdelena"
+	
+End Sub

@@ -1,0 +1,403 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 24. února 2016 10:32:11
+
+Call Podelnyprofil()
+Sub Podelnyprofil()
+	
+	Dim Vlastnostivyber, vychozivlastnosti,Vlastnosti
+
+	Vlastnostivyber = Array("Lokalniextremy", "Ne", "Ano", _
+		"Smerovevedeni", "Ne", "Ano", _
+		"Vyskanadterenem", "Ne", "Ano")
+
+	vychozivlastnosti = array(True, True, True)
+	Vlastnosti = Rhino.GetBoolean("Vlastnosti podelného profilu", Vlastnostivyber, vychozivlastnosti)
+	'Ostatni
+	Dim L,D,SmerTrasa,Trasa,TPoints,TPoint,Pocatek,VPoints(),i,Teren,min,Ekvid,Hlidac,Switch,Length,Redukce,Text,SPoints
+	L = 1
+	D = 0
+	
+	'Určení vstupů
+	Dim STrasa,Surfacebase
+	STrasa = Rhino.GetObject("Vyber smerove vedeni trasy", 4)
+	If IsNull(STrasa) Then
+		Rhino.Print("Nevybral jste trasu")
+		Exit Sub	
+	End If
+	Rhino.ObjectName STrasa, "Osa" & CStr (L) & "-smerove vedeni"
+	
+	If Rhino.IsLayer("TEREN") Then
+		Rhino.LayerLocked "TEREN", False
+	End If
+	If Rhino.IsLayer("TEREN") Then
+		Rhino.LayerVisible "TEREN", True
+	End If
+	Teren = Rhino.GetObject("Vyber teren", 56)
+	If IsNull(Teren) Then
+		Rhino.Print("Nevybral jste teren")
+		Exit Sub	
+	End If
+	
+	Rhino.CurrentView "Shora"
+	
+	Pocatek = Rhino.GetPoint("Urči místo pro vykreslení podelného profilu")
+	If IsNull(Pocatek) Then
+		Pocatek = Array(0, 0, 0)	
+	End If
+	Rhino.EnableRedraw vbFalse
+	Ekvid = Rhino.GetReal("Urči vzdálenost mezi označenými výškami", 10, 1, 1000)
+	Rhino.Print "Pracuji"
+	Do While D = 0
+		If Rhino.IsLayer("Podelný profil-Osa " & CStr (L) & "") Then
+			L = L + 1
+		Else 
+			Rhino.Print "New layer: " & Rhino.AddLayer("Podelný profil-Osa " & CStr (L) & "", RGB(0, 0, 0))
+			Rhino.CurrentLayer("Podelný profil-Osa " & CStr (L) & "")
+			D = 1
+		End If
+	Loop
+	
+	'Trasa na terenu
+	Surfacebase = Rhino.AddSrfPt(Array(Array(-50000, -50000, 0), Array(50000, -50000, 0), Array(50000, 50000, 0), Array(-50000, 50000, 0)))
+	SmerTrasa = Rhino.ProjectCurveToSurface(STrasa, Surfacebase, Array(0, 0, 1))
+	Rhino.DeleteObject Surfacebase
+	
+	If Rhino.IsSurface(Teren)Then
+		Trasa = Rhino.ProjectCurveToSurface(SmerTrasa(0), Teren, Array(0, 0, 1))
+	Else
+		If Rhino.IsMesh(Teren)Then
+			Trasa = Rhino.ProjectCurveToMesh(SmerTrasa(0), Teren, Array(0, 0, 1))
+		Else
+			Dim pomocteren 
+			Rhino.SelectObject Teren
+			Rhino.Print"Nutno prevest na Mesh"
+			Rhino.Command "_Mesh _Enter", 0
+			pomocteren = Rhino.LastCreatedobjects
+			Rhino.UnselectAllObjects
+			Trasa = Rhino.ProjectCurveToMesh(SmerTrasa(0), pomocteren(0), Array(0, 0, 1))
+		
+		End If
+	End If
+		
+	
+	Rhino.ObjectName Trasa, "Trasa " & CStr (L) & " - Teren"
+	Rhino.ObjectColor Trasa, RGB(0, 0, 255)
+	SPoints = Rhino.DivideCurveEquidistant(SmerTrasa(0), 1)
+	Rhino.DeleteObject SmerTrasa(0)
+	If Rhino.IsSurface(Teren)Then
+		TPoints = Rhino.ProjectPointToSurface(SPoints, Teren, Array(0, 0, 1))
+	Else
+		If Rhino.IsMesh(Teren)Then
+			TPoints = Rhino.ProjectPointToMesh(SPoints, Teren, Array(0, 0, 1))
+		Else
+			TPoints = Rhino.ProjectPointToMesh(SPoints, pomocteren(0), Array(0, 0, 1))
+			Rhino.DeleteObject pomocteren(0)
+		End If
+	End If
+		
+	'Hledani min a dimenzepole
+	min = TPoints(0)(2)
+	For Each TPoint In TPoints
+		If min > TPoint(2) Then
+			min = TPoint(2)	
+		End If	
+	Next
+	
+	Length = Rhino.CurveLength(Trasa(0))
+	Rhino.Print("Délka osy je " & CStr (Length) & " m ")
+	Rhino.Print("Minimalni vyska je " & CStr (min) & " m ")
+	Rhino.Print "Pracuji"
+	ReDim VPoints(Ubound(TPoints))
+	i = 0
+	
+	If Length < 1000 Then
+		If Length < 200 Then
+			Do While i * 10 < Ubound(TPoints)
+				Rhino.AddCircle Array((Pocatek(0) + (i * 10)), Pocatek(1), Pocatek(2)), 1
+				Rhino.AddText" " & CStr (i * 10) & " m", Array((Pocatek(0) + (i * 10) - 5), Pocatek(1) - 7, Pocatek(2)), 2
+				Rhino.AddCircle TPoints(i * 10), 1
+				Rhino.AddText" " & CStr (i * 10) & " m", TPoints(i * 10), 2
+				i = i + 1	
+			Loop
+		Else
+			Do While i * 50 < Ubound(TPoints)
+				Rhino.AddCircle Array((Pocatek(0) + (i * 50)), Pocatek(1), Pocatek(2)), 2
+				Rhino.AddText" " & CStr (i * 50) & " m", Array((Pocatek(0) + (i * 50) - 5), Pocatek(1) - 7, Pocatek(2)), 4
+				Rhino.AddCircle TPoints(i * 50), 2
+				Rhino.AddText" " & CStr (i * 50) & " m", TPoints(i * 50), 4
+				i = i + 1
+			Loop
+		End If
+	Else
+		Do While i * 100 < Ubound(TPoints)
+			Rhino.AddCircle Array((Pocatek(0) + (i * 100)), Pocatek(1), Pocatek(2)), 2
+			Rhino.AddText" " & CStr (i * 0.1) & " km ", Array((Pocatek(0) + (i * 100) - 5), Pocatek(1) - 7, Pocatek(2)), 4
+			Rhino.AddCircle TPoints(i * 100), 2
+			Rhino.AddText" " & CStr (i * 100) & " m", TPoints(i * 100), 4
+			i = i + 1
+		Loop
+	End If
+	
+	i = 0
+	'Redukce vysek-Srovnávací hladina
+	If min < 10 Then
+		Redukce = -(((min - 20 ) \ 10) * 10)
+	End If
+	
+	If min > 20 Then
+		Redukce = -(((min - 10) \ 10) * 10)
+	End If
+	
+	Rhino.AddText "SROVNÁVACÍ HLADINA: " & CStr (0 - Redukce) & " m ", Array(Pocatek(0), Pocatek(1) - 60, Pocatek(2)), 8
+	Rhino.AddText "PODÉLNÝ PROFIL TRASA: " & CStr (L) & "", Array(Pocatek(0), Pocatek(1) - 80, Pocatek(2)), 13
+	
+	If Vlastnosti(0) = True Then
+		Rhino.AddText "LOKÁLNÍ MAXIMUM [m]", Array(Pocatek(0) - 100, Pocatek(1) + 33, Pocatek(2)), 5
+		Rhino.AddText "LOKÁLNÍ MINIMUM [m]", Array(Pocatek(0) - 100, Pocatek(1) + 13, Pocatek(2)), 5
+	End If
+	
+	If Vlastnosti(1) = True Then
+		Rhino.AddText "SMĚROVÉ VEDENÍ", Array(Pocatek(0) - 100, Pocatek(1) - 27, Pocatek(2)), 5
+		Rhino.AddText "PRAVÁ", Array(Pocatek(0) - 30, Pocatek(1) - 34, Pocatek(2)), 4
+		Rhino.AddText "LEVÁ", Array(Pocatek(0) - 30, Pocatek(1) - 20, Pocatek(2)), 4
+	End If
+	
+	If Vlastnosti(2) = True Then
+		Rhino.AddText "VÝŠKA NAD TERÉNEM [m]", Array(Pocatek(0) - 100, Pocatek(1) + 23, Pocatek(2)), 5
+	End If
+	
+	'Urceni vyskoveho polygonu
+	'Extrem ANO Vyska ANO
+	If Vlastnosti(0) = True And Vlastnosti(2) = True Then
+		
+		For Each TPoint In TPoints
+			VPoints(i) = Array(i, TPoint(2), 0)
+		
+	
+			
+			If  ((i \ Ekvid) * Ekvid) - i = 0 Or i = (Ubound(Vpoints)) Then
+				Rhino.AddLine Array(i + Pocatek(0), Pocatek(1), 0), Array(i + Pocatek(0), Pocatek(1) + 20, 0)
+				Rhino.AddLine Array(i + Pocatek(0), Pocatek(1) + 30, 0), Array(VPoints(i)(0) + Pocatek(0), Pocatek(1) + (10 * VPoints(i)(1)) + Redukce * 10, VPoints(i)(2))
+				Text = Rhino.AddText(" " & CStr (((TPoint(2) * 100) \ 1) / 100) & " ", Array(i + 1 + Pocatek(0), Pocatek(1) + 20, 0), 2)
+				Rhino.RotateObject Text, Array(i + 1 + Pocatek(0), Pocatek(1) + 20, 0), 90
+			Else
+				If switch = 1 Then
+					If Hlidac < TPoint(2) Then
+						Hlidac = TPoint(2)
+					Else
+						Rhino.AddLine Array(i - 1 + Pocatek(0), Pocatek(1), 0), Array(i - 1 + Pocatek(0), Pocatek(1) + 30, 0)
+						Rhino.AddLine Array(i - 1 + Pocatek(0), Pocatek(1) + 40, 0), Array(VPoints(i)(0) - 1 + Pocatek(0), Pocatek(1) + (10 * Hlidac) + Redukce * 10, VPoints(i)(2))
+						Text = Rhino.AddText(" " & CStr (((Hlidac * 100) \ 1) / 100) & " ", Array(i + Pocatek(0), Pocatek(1) + 30, 0), 2)
+						Rhino.RotateObject Text, Array(i + Pocatek(0), Pocatek(1) + 30, 0), 90
+						switch = -1
+						Hlidac = TPoint(2)
+					End If
+				ElseIf switch = -1 Then
+					If Hlidac > TPoint(2) Then
+						Hlidac = TPoint(2)
+					Else
+						Rhino.AddLine Array(i - 1 + Pocatek(0), Pocatek(1), 0), Array(i - 1 + Pocatek(0), Pocatek(1) + 10, 0)
+						Rhino.AddLine Array(i - 1 + Pocatek(0), Pocatek(1) + 20, 0), Array(VPoints(i)(0) - 1 + Pocatek(0), Pocatek(1) + (10 * Hlidac) + Redukce * 10, VPoints(i)(2))
+						Text = Rhino.AddText(" " & CStr (((Hlidac * 100) \ 1) / 100) & " ", Array(i + Pocatek(0), Pocatek(1) + 10, 0), 2)
+						Rhino.RotateObject Text, Array(i + Pocatek(0), Pocatek(1) + 10, 0), 90
+						switch = 1
+						Hlidac = TPoint(2)
+					End If
+			
+				End If
+			End If
+			'----------------------------------------------
+			'Switch
+			If i = 0 Then
+				Hlidac = TPoint(2)
+			End If
+		
+			If i = 1 Then
+				If Hlidac < TPoint(2) Then
+					'Stoupa
+					Switch = 1
+				Else
+					'Klesa
+					Switch = -1
+				End If
+			End If
+		
+			i = i + 1
+		Next
+	End If
+	
+	'Extrem NE Vyska ANO
+	If Vlastnosti(0) = False And Vlastnosti(2) = True Then
+		
+		For Each TPoint In TPoints
+			VPoints(i) = Array(i, TPoint(2), 0)
+			If  ((i \ Ekvid) * Ekvid) - i = 0 Or i = (Ubound(Vpoints)) Then
+				VPoints(i) = Array(i, TPoint(2), 0)
+				Rhino.AddLine Array(i + Pocatek(0), Pocatek(1), 0), Array(i + Pocatek(0), Pocatek(1) + 20, 0)
+				Rhino.AddLine Array(i + Pocatek(0), Pocatek(1) + 30, 0), Array(VPoints(i)(0) + Pocatek(0), Pocatek(1) + (10 * VPoints(i)(1)) + Redukce * 10, VPoints(i)(2))
+				Text = Rhino.AddText(" " & CStr (((TPoint(2) * 100) \ 1) / 100) & " ", Array(i + 1 + Pocatek(0), Pocatek(1) + 20, 0), 2)
+				Rhino.RotateObject Text, Array(i + 1 + Pocatek(0), Pocatek(1) + 20, 0), 90
+			End If
+			i = i + 1
+		Next
+	End If
+	
+	'Extrem NE Vyska NE
+	If Vlastnosti(0) = False And Vlastnosti(2) = False Then
+		
+		For Each TPoint In TPoints
+			VPoints(i) = Array(i, TPoint(2), 0)
+			If  ((i \ Ekvid) * Ekvid) - i = 0 Or i = (Ubound(Vpoints)) Then
+				Rhino.AddLine Array(i + Pocatek(0), Pocatek(1), 0), Array(VPoints(i)(0) + Pocatek(0), Pocatek(1) + (10 * VPoints(i)(1)) + Redukce * 10, VPoints(i)(2))
+			End If
+			i = i + 1
+		Next
+	End If
+	
+	'Extrem ANO Vyska NE
+	If Vlastnosti(0) = True And Vlastnosti(2) = False Then
+		
+		For Each TPoint In TPoints
+			VPoints(i) = Array(i, TPoint(2), 0)
+		
+			If  ((i \ Ekvid) * Ekvid) - i = 0 Or i = (Ubound(Vpoints)) Then
+				Rhino.AddLine Array(i + Pocatek(0), Pocatek(1), 0), Array(VPoints(i)(0) + Pocatek(0), Pocatek(1) + (10 * VPoints(i)(1)) + Redukce * 10, VPoints(i)(2))
+			Else
+				If switch = 1 Then
+					If Hlidac < TPoint(2) Then
+						Hlidac = TPoint(2)
+					Else
+						Rhino.AddLine Array(i - 1 + Pocatek(0), Pocatek(1), 0), Array(i - 1 + Pocatek(0), Pocatek(1) + 30, 0)
+						Rhino.AddLine Array(i - 1 + Pocatek(0), Pocatek(1) + 40, 0), Array(VPoints(i)(0) - 1 + Pocatek(0), Pocatek(1) + (10 * Hlidac) + Redukce * 10, VPoints(i)(2))
+						Text = Rhino.AddText(" " & CStr (((Hlidac * 100) \ 1) / 100) & " ", Array(i + Pocatek(0), Pocatek(1) + 30, 0), 2)
+						Rhino.RotateObject Text, Array(i + Pocatek(0), Pocatek(1) + 30, 0), 90
+						switch = -1
+						Hlidac = TPoint(2)
+					End If
+				ElseIf switch = -1 Then
+					If Hlidac > TPoint(2) Then
+						Hlidac = TPoint(2)
+					Else
+						Rhino.AddLine Array(i - 1 + Pocatek(0), Pocatek(1), 0), Array(i - 1 + Pocatek(0), Pocatek(1) + 10, 0)
+						Rhino.AddLine Array(i - 1 + Pocatek(0), Pocatek(1) + 20, 0), Array(VPoints(i)(0) - 1 + Pocatek(0), Pocatek(1) + (10 * Hlidac) + Redukce * 10, VPoints(i)(2))
+						Text = Rhino.AddText(" " & CStr (((Hlidac * 100) \ 1) / 100) & " ", Array(i + Pocatek(0), Pocatek(1) + 10, 0), 2)
+						Rhino.RotateObject Text, Array(i + Pocatek(0), Pocatek(1) + 10, 0), 90
+						switch = 1
+						Hlidac = TPoint(2)
+					End If
+			
+				End If
+			End If
+			'----------------------------------------------
+			'Switch
+			If i = 0 Then
+				Hlidac = TPoint(2)
+			End If
+		
+			If i = 1 Then
+				If Hlidac < TPoint(2) Then
+					'Stoupa
+					Switch = 1
+				Else
+					'Klesa
+					Switch = -1
+				End If
+			End If
+		
+			i = i + 1
+		Next
+	End If
+	
+	'Smerove vedeni
+	Dim alfa,beta,Rozdil,ZPoints()
+	ReDim ZPoints (Ubound(TPoints)-1)
+	hlidac = 0
+	i = 1
+	If Vlastnosti(1) = True Then
+		Do While i =< (UBound(Tpoints) -2)
+			alfa = Rhino.Angle(Array(Tpoints(i)(0), Tpoints(i)(1), 0), Array(Tpoints(i + 1)(0), Tpoints(i + 1)(1), 0))
+			beta = Rhino.Angle(Array(Tpoints(i)(0), Tpoints(i)(1), 0), Array(Tpoints(i - 1)(0), Tpoints(i - 1)(1), 0))
+			rozdil = beta(0) - alfa(0)
+			If rozdil < 0 Then
+				rozdil = rozdil + 360
+			End If
+			
+			If i = 1 Then
+				If rozdil < 180.1 And rozdil > 179.9 Then 'Prima
+					ZPoints(i + 1) = Array(pocatek(0) + i + 1, pocatek(1) - 25, 0)
+					ZPoints(i) = Array(pocatek(0) + i, pocatek(1) - 25, 0)
+					ZPoints(i - 1) = Array(pocatek(0), pocatek(1) - 25, 0)
+					hlidac = 0
+				End If
+			
+				If rozdil > 180.1 Then 'Leva
+					ZPoints(i + 1) = Array(pocatek(0) + i + 1, pocatek(1) - 35, 0)
+					ZPoints(i) = Array(pocatek(0) + i, pocatek(1) - 35, 0)
+					ZPoints(i - 1) = Array(pocatek(0), pocatek(1) - 35, 0)
+					hlidac = 1
+					
+				End If
+			
+				If rozdil < 179.9 Then 'Prava
+					ZPoints(i + 1) = Array(pocatek(0) + i + 1, pocatek(1) - 15, 0)
+					ZPoints(i) = Array(pocatek(0) + i, pocatek(1) - 15, 0)
+					ZPoints(i - 1) = Array(pocatek(0), pocatek(1) - 15, 0)
+					hlidac = 2
+				End If
+		
+			Else
+					
+				If rozdil < 180.1 And rozdil > 179.9 Then 'Prima
+					If hlidac = 1 Or hlidac = 2 Then
+						hlidac = 0
+						ZPoints(i + 1) = Array(pocatek(0) + i, pocatek(1) - 25, 0)
+					Else
+						ZPoints(i + 1) = Array(pocatek(0) + i + 1, pocatek(1) - 25, 0)
+					End If
+				End If
+			
+				If rozdil > 180.1 Then 'Leva
+				
+					If hlidac = 0 Or hlidac = 2 Then
+						hlidac = 1
+						ZPoints(i + 1) = Array(pocatek(0) + i, pocatek(1) - 35, 0)
+					Else
+						ZPoints(i + 1) = Array(pocatek(0) + i + 1, pocatek(1) - 35, 0)
+					End If
+				End If
+			
+				If rozdil < 179.9 Then 'Prava
+				
+					If hlidac = 0 Or hlidac = 1 Then
+						hlidac = 2
+						ZPoints(i + 1) = Array(pocatek(0) + i, pocatek(1) - 15, 0)
+					Else
+						ZPoints(i + 1) = Array(pocatek(0) + i + 1, pocatek(1) - 15, 0)
+					End If
+				End If
+			End If
+			i = i + 1
+		Loop
+		Rhino.AddPolyline(Zpoints)
+	End If
+	
+	Rhino.AddLine Pocatek, Array(Pocatek(0) + i + 1, Pocatek(1), Pocatek(2))
+	Trasa = Rhino.AddInterpCurve(VPoints)
+	Rhino.ObjectName Trasa, "Trasa-Teren"
+	Rhino.ScaleObject Trasa, Array(0, 0, 0), Array(1, 10, 1)
+	Rhino.MoveObject Trasa, Array(0, 0, 0), Array(Pocatek(0), Pocatek(1) + (Redukce * 10), Pocatek(2))
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	If Rhino.IsLayer("TEREN") Then
+		Rhino.LayerVisible "TEREN", False
+	End If
+	Rhino.Print "Byl vytvoren podélný profil"
+	Rhino.EnableRedraw vbTrue
+
+End Sub

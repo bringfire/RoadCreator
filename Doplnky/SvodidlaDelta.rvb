@@ -1,0 +1,176 @@
+Option Explicit
+'Script written by <Adam Orlicky>
+'Script copyrighted by <insert company name>
+'Script version 24. února 2016 16:42:54
+
+Call SvodidlaDelta()
+Sub SvodidlaDelta()
+	Dim Krivka
+	
+	Krivka = Rhino.GetObject("Vyber krivku svodidel pro vlozeni svodidel", 4)
+	If IsNull(Krivka) Then
+		Rhino.Print("Nevybral jste krivku")
+		Exit Sub	
+	End If	
+
+	Dim Moznosti, Druhbloku
+	Moznosti = Array("Delta Blok 80", "Delta Blok 100S", "Delta Blok 100", "Delta Blok 120")
+
+	Druhbloku = Rhino.ListBox(Moznosti, "Vyber druh betonoveho bloku")
+	If IsNull(Druhbloku) Then
+		Exit Sub
+	End If
+	Rhino.EnableRedraw vbFalse
+	
+	If Rhino.IsLayer("Deltablok") Then
+		Rhino.CurrentLayer("Deltablok")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Deltablok", RGB(176, 150, 180))
+		Rhino.CurrentLayer("Deltablok")
+	End If
+	
+	Dim rezblokuhl(7),profilhlavni,profilkoncovy,rezblokukoncovy(7),rezblokuplnekoncovy(7),profiluplnekoncovy
+	If Druhbloku = "Delta Blok 80" Then
+		rezblokuhl(0) = Array(0, -0.31, -0.05)
+		rezblokuhl(1) = Array(0, -0.29, 0.11)
+		rezblokuhl(2) = Array(0, -0.14, 0.29)
+		rezblokuhl(3) = Array(0, -0.06, 0.8)
+		rezblokuhl(4) = Array(0, 0.06, 0.8)
+		rezblokuhl(5) = Array(0, 0.14, 0.29)
+		rezblokuhl(6) = Array(0, 0.29, 0.11)
+		rezblokuhl(7) = Array(0, 0.31, -0.05)
+	End If
+	If Druhbloku = "Delta Blok 100S" Then
+		rezblokuhl(0) = Array(0, 0 - 0.33, -0.05)
+		rezblokuhl(1) = Array(0, -0.31, 0.13)
+		rezblokuhl(2) = Array(0, -0.14, 0.35)
+		rezblokuhl(3) = Array(0, -0.06, 1)
+		rezblokuhl(4) = Array(0, 0.06, 1)
+		rezblokuhl(5) = Array(0, 0.14, 0.35)
+		rezblokuhl(6) = Array(0, 0.31, 0.13)
+		rezblokuhl(7) = Array(0, 0.33, -0.05)
+	End If
+	If Druhbloku = "Delta Blok 100" Then
+		rezblokuhl(0) = Array(0, 0 - 0.35, -0.05)
+		rezblokuhl(1) = Array(0, -0.34, 0.10)
+		rezblokuhl(2) = Array(0, -0.17, 0.39)
+		rezblokuhl(3) = Array(0, -0.11, 1)
+		rezblokuhl(4) = Array(0, 0.11, 1)
+		rezblokuhl(5) = Array(0, 0.17, 0.39)
+		rezblokuhl(6) = Array(0, 0.34, 0.10)
+		rezblokuhl(7) = Array(0, 0.35, -0.05)
+	End If
+	If Druhbloku = "Delta Blok 120" Then
+		rezblokuhl(0) = Array(0, 0 - 0.42, -0.05)
+		rezblokuhl(1) = Array(0, -0.38, 0.08)
+		rezblokuhl(2) = Array(0, -0.18, 0.39)
+		rezblokuhl(3) = Array(0, -0.12, 1.2)
+		rezblokuhl(4) = Array(0, 0.12, 1.2)
+		rezblokuhl(5) = Array(0, 0.18, 0.39)
+		rezblokuhl(6) = Array(0, 0.38, 0.08)
+		rezblokuhl(7) = Array(0, 0.42, -0.05)
+	End If
+	
+	rezblokukoncovy(0) = rezblokuhl(0)
+	rezblokukoncovy(1) = rezblokuhl(1)
+	rezblokukoncovy(2) = Array(rezblokuhl(2)(0), rezblokuhl(2)(1) - 0.01, rezblokuhl(2)(2))
+	rezblokukoncovy(3) = Array(rezblokuhl(3)(0), rezblokuhl(2)(1), rezblokuhl(2)(2))
+	rezblokukoncovy(4) = Array(rezblokuhl(4)(0), rezblokuhl(4)(1), rezblokuhl(2)(2))
+	rezblokukoncovy(5) = Array(rezblokuhl(5)(0), rezblokuhl(4)(1) + 0.01, rezblokuhl(2)(2))
+	rezblokukoncovy(6) = rezblokuhl(6)
+	rezblokukoncovy(7) = rezblokuhl(7)
+	
+	rezblokuplnekoncovy(0) = rezblokuhl(0)
+	rezblokuplnekoncovy(1) = rezblokuhl(1)
+	rezblokuplnekoncovy(2) = Array(rezblokuhl(1)(0), rezblokuhl(1)(1) + 0.005, rezblokuhl(1)(2))
+	rezblokuplnekoncovy(3) = Array(rezblokuhl(1)(0), rezblokuhl(1)(1) + 0.01, rezblokuhl(1)(2))
+	rezblokuplnekoncovy(4) = Array(rezblokuhl(6)(0), rezblokuhl(6)(1) - 0.01, rezblokuhl(6)(2))
+	rezblokuplnekoncovy(5) = Array(rezblokuhl(6)(0), rezblokuhl(6)(1) - 0.005, rezblokuhl(6)(2))
+	rezblokuplnekoncovy(6) = rezblokuhl(6)
+	rezblokuplnekoncovy(7) = rezblokuhl(7)
+	
+	profiluplnekoncovy = Rhino.AddPolyline(rezblokuplnekoncovy)
+	profilhlavni = Rhino.AddPolyline(rezblokuhl)
+	profilkoncovy = Rhino.AddPolyline(rezblokukoncovy)
+	
+	Dim i,blokpoints,kruznice,kruzniceplocha,prunik,alfa,Profil(),pomline,endstartline,distance
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Blokpoints = Rhino.DivideCurveEquidistant(krivka, 4)
+	ReDim Profil(UBound(blokpoints)+2)
+	Distance = 4 * ((rezblokuhl(2)(2) - rezblokuhl(1)(2) ) / (rezblokuhl(3)(2) - rezblokuhl(1)(2)))
+	i = 0
+
+	Do While i =< UBound(blokpoints)
+		If i = 0  Then
+			Profil(i) = Rhino.CopyObject(profiluplnekoncovy, Array(0, 0, 0), blokpoints(i))
+			Kruznice = Rhino.AddCircle(blokpoints(i), 0.1)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+			alfa = Rhino.Angle(blokpoints(i), prunik(0, 1))
+			Rhino.RotateObjects profil(i), blokpoints(i), 180 + alfa(0)
+			Rhino.DeleteObject Kruznice
+			Rhino.deleteObject Kruzniceplocha
+			endstartline = Rhino.AddLine(Rhino.CurveStartPoint(Profil(i)), Rhino.CurveEndPoint(Profil(i)))
+			Rhino.AddEdgeSrf Array(endstartline, profil(i))
+			Rhino.DeleteObject(endstartline)
+			'Druhy profil
+			Kruznice = Rhino.AddCircle(blokpoints(i), distance)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+			alfa = Rhino.Angle(blokpoints(i), prunik(0, 1))
+			Profil(i + 1) = Rhino.CopyObject(profilkoncovy, Array(0, 0, 0), prunik(0, 1))
+			Rhino.RotateObjects profil(i + 1), prunik(0, 1), 180 + alfa(0)
+			Rhino.DeleteObject Kruznice
+			Rhino.deleteObject Kruzniceplocha
+			i = i + 1
+		ElseIf i = UBound(blokpoints) Then
+			Profil(i + 2) = Rhino.CopyObject(profiluplnekoncovy, Array(0, 0, 0), blokpoints(i))
+			Kruznice = Rhino.AddCircle(blokpoints(i), 0.1)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+			alfa = Rhino.Angle(blokpoints(i), prunik(0, 1))
+			Rhino.RotateObjects profil(i + 2), blokpoints(i), 360 + alfa(0)
+			Rhino.DeleteObject Kruznice
+			Rhino.DeleteObject Kruzniceplocha
+			endstartline = Rhino.AddLine(Rhino.CurveStartPoint(Profil(i + 2)), Rhino.CurveEndPoint(Profil(i + 2)))
+			Rhino.AddEdgeSrf Array(endstartline, profil(i + 2))
+			Rhino.DeleteObject(endstartline)
+			'Druhy profil
+			Kruznice = Rhino.AddCircle(blokpoints(i), distance)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+			alfa = Rhino.Angle(blokpoints(i), prunik(0, 1))
+			Profil(i + 1) = Rhino.CopyObject(profilkoncovy, Array(0, 0, 0), prunik(0, 1))
+			Rhino.RotateObjects profil(i + 1), prunik(0, 1), 360 + alfa(0)
+			Rhino.DeleteObject Kruznice
+			Rhino.deleteObject Kruzniceplocha
+			i = i + 1
+		Else
+			profil(i + 1) = Rhino.CopyObject(profilhlavni, Array(0, 0, 0), blokpoints(i))
+			Kruznice = Rhino.AddCircle(blokpoints(i), 0.1)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+			alfa = Rhino.Angle(prunik(0, 1), prunik(1, 1))
+			Rhino.RotateObjects profil(i + 1), blokpoints(i), 180 + alfa(0)
+			i = i + 1
+			Rhino.DeleteObject Kruznice
+			Rhino.DeleteObject Kruzniceplocha
+		End If
+	Loop
+	Rhino.AddLoftSrf profil,,, 2
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.EnableRedraw vbTrue
+	'Rhino.DeleteObjects(profil)
+	
+End Sub

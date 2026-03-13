@@ -1,0 +1,130 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 21. března 2016 15:19:28
+
+
+Call StromDatabazevlozit()
+Sub StromDatabazevlozit()
+	
+	Rhino.EnableRedraw vbFalse
+	If Rhino.IsLayer("Stromy databaze") Then
+		Rhino.LayerLocked "Stromy databaze", False
+		Rhino.LayerVisible "Stromy databaze", True
+		Dim LayerObjects
+		LayerObjects = Rhino.ObjectsByLayer("Stromy databaze")
+		If isnull(Layerobjects) Then
+		Else
+			'VYtvoreni seznamu objektu
+			Dim i,NameObject,LastName,Jmenaobjektu(),Minulajmena(),jmeno,ilength,Add,p,obj
+			Lastname = "asdfnkadvgowf7543asdvafnd554"
+			ReDim Jmenaobjektudatabaze(Ubound(LayerObjects))
+			i = 0
+			Rhino.Print"Prohledávám databázi"
+			For Each obj In Layerobjects
+				If Rhino.IsPoint(obj) = True Then
+				Else
+					NameObject = Rhino.ObjectName(obj)
+					If Not IsNull(NameObject) And Not Lastname = NameObject Then 
+						Add = True
+						If i > 0 Then
+							For Each jmeno In Jmenaobjektu
+								If jmeno = Nameobject Then
+									Add = False
+								End If
+							Next
+				
+							If Add = True Then
+								ReDim Minulajmena(i-1)
+								p = 0
+								For Each jmeno In Jmenaobjektu
+									Minulajmena(p) = jmeno
+									p = p + 1
+								Next
+								ReDim Jmenaobjektu(i)
+					
+								p = 0
+								For Each jmeno In Jmenaobjektu
+									If p = i Then
+										Jmenaobjektu(p) = Nameobject
+									Else
+										Jmenaobjektu(p) = Minulajmena(p)
+									End If
+									p = p + 1
+								Next
+								i = i + 1
+								LastName = Nameobject
+							End If
+		
+						Else
+							ReDim Jmenaobjektu(0)
+							Jmenaobjektu(0) = NameObject
+							i = i + 1
+							LastName = Nameobject
+						End If
+			
+					End If
+				End If
+	
+			Next
+		
+		End If
+		
+		Rhino.LayerLocked "Stromy databaze", True
+		Rhino.LayerVisible "Stromy databaze", False
+		Rhino.EnableRedraw vbTrue	
+			
+		
+	
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Stromy databaze", RGB(0, 0, 0))
+		Rhino.LayerLocked "Stromy databaze", True
+		Rhino.LayerVisible "Stromy databaze", False
+		Rhino.EnableRedraw vbTrue
+	End If
+	
+
+
+	'Ulozeni objektu
+	Dim objekt,objektbase,Name,Namepoint,objektbasepoint
+	Objekt = Rhino.GetObjects("Vyber strom pro vložení do databaze")
+	If isnull(Objekt) Then
+		Rhino.Print"Nevybral jste strom"
+		Exit Sub
+	End If
+	Objektbase = Rhino.GetPoint("Urci misto pocatku stromu")
+	If isnull(Objektbase) Then
+		Rhino.Print"Nevybral jste pocatek objektu"
+		Exit Sub
+	End If
+	objektbasepoint = Rhino.AddPoint(Objektbase)
+	
+	Name = Rhino.GetString("Zadej nazev objektu:")
+	If isnull(LayerObjects) Then
+	Else
+		For Each jmeno In Jmenaobjektu
+			If Name = jmeno Then
+				Rhino.Print"Objekt s timto nazvem v databazi jiz existuje"
+				Exit Sub
+			End If	
+		Next
+	End If
+
+	Namepoint = CStr (Name) & "-point(RoadCreator)"
+	Rhino.ObjectName Objekt, Name
+	Rhino.ObjectName Objektbasepoint, Namepoint
+	Rhino.ObjectLayer Objekt, "Stromy databaze"
+	Rhino.ObjectLayer Objektbasepoint, "Stromy databaze"
+
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.Print"Strom byl vlozen do databaze"
+	
+	
+	
+
+End Sub

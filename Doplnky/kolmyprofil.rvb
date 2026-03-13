@@ -1,0 +1,45 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 3. března 2016 12:20:53
+
+Call Kolmoprofil()
+Sub Kolmoprofil()
+	Dim Krivka,profil,point
+		
+	Krivka = Rhino.GetObject("Vyber krivku pro taženi", 4)
+	If IsNull(Krivka) Then
+		Rhino.Print("Nevybral jste krivku")
+		Exit Sub	
+	End If
+	
+	profil = Rhino.Getobject("Vyber profil ktery bude kolmo na krivku", 4)
+	If IsNull(profil) Then
+		Rhino.Print "Nevybral jste krivku"
+		Exit Sub
+	End If
+	
+	point = Rhino.GetPoint("Urči bod kde má dojít k vložení")
+	If isnull(Point) Then
+		point = Rhino.CurveStartPoint(Krivka)
+	End If
+	
+	Rhino.EnableRedraw vbFalse
+	Dim kruznice,kruzniceplocha,prunik,alfa,pomline,start
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruznice = Rhino.AddCircle(point, 0.1)
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik = Rhino.CurveSurfaceIntersection(Krivka, Kruzniceplocha)
+	alfa = Rhino.Angle(Rhino.CurveStartPoint(Krivka), prunik(0, 1))
+	start = Rhino.CurveStartPoint(profil)
+	Rhino.MoveObjects profil, start, point
+	Rhino.RotateObjects profil, point, alfa(0)
+	
+	Rhino.DeleteObject Kruznice
+	Rhino.DeleteObject Kruzniceplocha
+	Rhino.DeleteObject Pomline
+		
+	Rhino.EnableRedraw vbTrue
+		
+End Sub

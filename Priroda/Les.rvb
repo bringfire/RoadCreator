@@ -1,0 +1,283 @@
+Option Explicit
+'Script written by <Adam Orlicky>
+'Script copyrighted by <insert company name>
+'Script version 23. června 2015 22:05:24
+Call Les()
+
+Sub Les()
+	
+	Dim Teren
+	'Vyber terenu
+	Teren = Rhino.GetObject("Vyber terén", 24)
+	If IsNull(Teren) Then
+		Rhino.Print "Nevybral jste terén"
+		Exit Sub
+	End If
+	
+
+	
+	'Vyber stromu
+	Dim ntree,Objekt(),Base(),Scale(),p,a
+	
+	Dim Vlastnosti,Vlastnostivyber
+	Vlastnostivyber = Array("Databaze", "Ne", "Ano")
+	Vlastnosti = Rhino.GetBoolean("Vyber stromu z databaze", Vlastnostivyber, array(True))
+	
+	If Vlastnosti(0) = True Then
+		If Rhino.IsLayer("Stromy databaze") Then
+			Rhino.LayerLocked "Stromy databaze", False
+			Rhino.LayerVisible "Stromy databaze", True
+			Rhino.Print" Byla zpristupnena databaze stromu a keru"
+		
+			Dim LayerObjects,NameObjects
+			LayerObjects = Rhino.ObjectsByLayer("Stromy databaze")
+			If isnull(LayerObjects) Then
+				Rhino.Print"Databaze je prazdna"
+				Rhino.LayerLocked "Stromy databaze", True
+				Rhino.LayerVisible "Stromy databaze", False
+				Rhino.EnableRedraw vbTrue
+				Exit Sub
+			End If
+
+			'VYtvoreni seznamu objektu
+			Dim i,NameObject,LastName,Jmenaobjektu,Minulajmena(),jmeno,ilength,Add,obj
+			Lastname = "asdfnkadvgowf7543asdvafnd554"
+			ReDim Jmenaobjektudatabaze(Ubound(LayerObjects))
+			i = 0
+			Jmenaobjektu = Null
+			Rhino.Print"Prohledávám databázi"
+			For Each obj In Layerobjects
+				If Rhino.IsPoint(obj) = True Then
+				Else
+					NameObject = Rhino.ObjectName(obj)
+					If Not IsNull(NameObject) And Not Lastname = NameObject Then 
+						Add = True
+						If i > 0 Then
+							For Each jmeno In Jmenaobjektu
+								If jmeno = Nameobject Then
+									Add = False
+								End If
+							Next
+				
+							If Add = True Then
+								ReDim Minulajmena(i-1)
+								p = 0
+								For Each jmeno In Jmenaobjektu
+									Minulajmena(p) = jmeno
+									p = p + 1
+								Next
+								ReDim Jmenaobjektu(i)
+					
+								p = 0
+								For Each jmeno In Jmenaobjektu
+									If p = i Then
+										Jmenaobjektu(p) = Nameobject
+									Else
+										Jmenaobjektu(p) = Minulajmena(p)
+									End If
+									p = p + 1
+								Next
+								i = i + 1
+								LastName = Nameobject
+							End If
+		
+						Else
+							ReDim Jmenaobjektu(0)
+							Jmenaobjektu(0) = NameObject
+							i = i + 1
+							LastName = Nameobject
+						End If
+			
+					End If
+				End If
+		
+	
+			Next
+		Else
+			Rhino.Print"Nybyla nalezena databaze stromu"
+			Rhino.EnableRedraw vbTrue
+			Exit Sub
+		End If
+		
+		If isnull(Jmenaobjektu) Then
+			Rhino.Print"V databazy nejsou pojmenovány stromy"
+			Rhino.EnableRedraw vbTrue
+			Exit Sub
+		End If
+		Dim Vybrane
+		Vybrane = Rhino.MultiListBox(Jmenaobjektu, "Vyber stromy")
+		If isnull(Vybrane) Then
+			Rhino.LayerLocked "Stromy databaze", True
+			Rhino.LayerVisible "Stromy databaze", False
+			Rhino.Print"Nebyl vybran objekt"
+			Exit Sub
+		End If
+		ntree = Ubound(Vybrane) + 1
+		p = 0
+		ReDim Objekt(ntree-1)
+		ReDim Base(ntree-1)
+		ReDim Scale(ntree-1)
+		
+		For Each jmeno In vybrane
+			Objekt(p) = Rhino.ObjectsByName(jmeno)
+			Nameobject = Rhino.ObjectsByName(CStr (jmeno) & "-point(RoadCreator)")
+			If isnull(Nameobject) Then
+				Rhino.Print"Stromy z databaze nemaji pocatecny bod"
+				Rhino.EnableRedraw vbTrue
+				Exit Sub
+				End Ifrh
+			Base(p) = Rhino.PointCoordinates(Nameobject(0))
+			Scale(p) = Rhino.GetReal("Zadej rozsah zmeny meřítka pro " & CStr (jmeno) & " v %", 1, 1)
+			p = p + 1
+		Next
+	
+	Else
+		ntree = Rhino.GetReal("Zadej pocet stromu ktere chces kopirovat", 1)
+		If IsNull(ntree) Then
+			Rhino.Print "Nezadal jste pocet stromu"
+			Exit Sub
+		End If
+		
+		p = 0
+		ReDim Objekt(ntree-1)
+		ReDim Base(ntree-1)
+		ReDim Scale(ntree-1)
+	
+		Do While p < ntree
+			Objekt(p) = Rhino.Getobjects("Vyber " & CStr(p + 1) & ". objekt pro kopirovani")
+			If IsNull(Objekt(p)) Then
+				Rhino.Print "Nevybral jste objekt pro kopirovani"
+				If Rhino.IsLayer("Stromy databaze") Then
+					Rhino.LayerLocked "Stromy databaze", True
+					Rhino.LayerVisible "Stromy databaze", False
+				End If
+				Exit Sub
+			End If
+		
+			Base(p) = Rhino.GetPoint("Vyber " & CStr(p + 1) & ". pocatek kopirovani")
+			If IsNull(Base(p)) Then
+				Rhino.Print "Nevybral jste pocatek"
+				If Rhino.IsLayer("Stromy databaze") Then
+					Rhino.LayerLocked "Stromy databaze", True
+					Rhino.LayerVisible "Stromy databaze", False
+				End If
+				Exit Sub
+			End If
+			Scale(p) = Rhino.GetReal("Zadej rozsah zmeny meřítka v %", 1, 1)
+			p = p + 1
+			
+		Loop
+	End If
+
+	
+	a = 0
+	Dim  j, t(1), arrPoint,arrPointprom,copy,randrotate,randscale,randtree,U,V,Les,Lespoints,Lesplocha,hustota
+	Do While a < 1
+
+		hustota = Rhino.GetReal("Zadej pruměrné odsazení objektů.", 6, 1, 200) 
+		If isnull(Hustota) Then
+			Rhino.Print"Nezadal jste odsazeni"
+			Exit Sub
+		End If
+		'Vytvoreni krovi
+		Rhino.CurrentView "Shora"
+		
+		If Rhino.IsLayer("Lesy") Then
+			Rhino.CurrentLayer("Lesy")
+		Else 
+			Rhino.Print "New layer: " & Rhino.AddLayer("Lesy", RGB(121, 41, 41))
+			Rhino.CurrentLayer("Lesy")
+		End If
+		
+		Rhino.ProjectOsnaps True
+		Lespoints = Rhino.GetPolyline(, "Zadejte obrys oblasti lesa", "Zadejte obrys oblasti lesa", "Zadejte obrys oblasti lesa", "Zadejte obrys oblasti lesa")
+		Rhino.ProjectOsnaps False
+		If IsArray(Lespoints) Then
+			Les = Rhino.Addpolyline(Lespoints)
+		Else
+			Rhino.Print("Nevybral jste obrys lesa.")
+			Rhino.EnableRedraw vbTrue
+			Rhino.ProjectOsnaps False
+			If Rhino.IsLayer("Default") Then
+				Rhino.CurrentLayer("Default")
+			Else 
+				Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+				Rhino.CurrentLayer("Default")
+			End If
+			If Rhino.IsLayer("Stromy databaze") Then
+				Rhino.LayerLocked "Stromy databaze", True
+				Rhino.LayerVisible "Stromy databaze", False
+			End If
+			Exit Sub
+		End If
+	
+		If Not Rhino.iscurveclosed(Les) Then
+			Rhino.Print "Neuzavřel jste les."
+			Rhino.ProjectOsnaps False
+			If Rhino.IsLayer("Default") Then
+				Rhino.CurrentLayer("Default")
+			Else 
+				Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+				Rhino.CurrentLayer("Default")
+			End If
+			If Rhino.IsLayer("Stromy databaze") Then
+				Rhino.LayerLocked "Stromy databaze", True
+				Rhino.LayerVisible "Stromy databaze", False
+			End If
+			Exit Sub
+		End If
+		Rhino.EnableRedraw vbFalse
+		Lesplocha = Rhino.AddPlanarSrf(Les)
+	
+		' Získání rozměru vytvořené plochy 
+		U = Rhino.SurfaceDomain(Lesplocha(0), 0)
+		V = Rhino.SurfaceDomain(Lesplocha(0), 1)
+		If Not IsArray(U) Or Not IsArray(V) Then Exit Sub
+ 
+		' VYpnutí vykreslování ( zrychlení)
+	
+ 
+		' Vkladani na plochu
+		Rhino.CurrentView "Perspektiva"
+		For i = 0 To ((U(1) - U(0)) / hustota) \ 1
+			t(0) = U(0) + (hustota * i)
+			For j = 0 To ((V(1) - V(0)) / hustota) \ 1
+				t(1) = V(0) + (hustota * j)
+				arrPoint = Rhino.EvaluateSurface(Lesplocha(0), t)
+				If IsArray(arrPoint) Then 
+					If Rhino.IsPointOnSurface(Lesplocha(0), arrPoint) Then
+						Randomize
+						arrPoint(0) = arrPoint(0) + (hustota * Rnd) - (hustota / 2)
+						arrPoint(1) = arrPoint(1) + (hustota * Rnd) - (hustota / 2)
+						
+						arrPointprom = Rhino.ProjectPointToSurface(arrPoint, Teren, Array(0, 0, 1))
+				
+						If Not IsNull(arrPointprom) Then
+							randtree = ((ntree - 1) * Rnd) \ 1
+							'	Rhino.Print "randtree " & CStr(randtree)
+							copy = Rhino.CopyObjects(Objekt(randtree), Base(randtree), arrPointprom(0))
+							Rhino.ObjectLayer copy, "Lesy"
+							Rhino.ObjectName copy, "Strom" & CStr(randtree)
+							randrotate = ((360) * Rnd )
+							Rhino.RotateObjects copy, arrPointprom(0), randrotate
+							'Nahodne cislo pro pootoceni objektu'
+							randscale = (((Scale(randtree)) * Rnd + 1) - (Scale(randtree) / 2)) / 100 + 1
+							Rhino.ScaleObjects copy, arrPointprom(0), array(randscale, randscale, randscale)
+						End If	
+					End If
+				End If
+			Next
+		Next
+		Rhino.EnableRedraw vbTrue
+		Rhino.DeleteObject Lesplocha(0)
+		Rhino.DeleteObject Les
+		
+	Loop
+	If Rhino.IsLayer("Stromy databaze") Then
+		Rhino.LayerLocked "Stromy databaze", True
+		Rhino.LayerVisible "Stromy databaze", False
+	End If
+	Rhino.EnableRedraw vbTrue
+	
+	
+End Sub

@@ -1,0 +1,89 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 3. března 2016 16:26:44
+
+Call Krajnice()
+
+Function Closestpoint(curve, point)
+	Dim  t, pt
+	t = Rhino.CurveClosestPoint(curve, point)
+	If Not IsNull(t) Then
+		pt = Rhino.EvaluateCurve(curve, t)
+	End If
+	Closestpoint = pt
+End Function
+
+Function Vlozprofilkolmovbode(curve, profil, bod)
+	Dim kruznice,kruzniceplocha,prunik,alfa,pomline
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruznice = Rhino.AddCircle(bod, 0.1)
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik = Rhino.CurveSurfaceIntersection(curve, Kruzniceplocha)
+	alfa = Rhino.Angle(bod, prunik(0, 1))
+	Rhino.MoveObjects profil, Array(0, 0, 0), bod
+	Rhino.RotateObjects profil, bod, 90 + alfa(0)
+	
+	Rhino.DeleteObject Kruznice
+	Rhino.DeleteObject Kruzniceplocha
+	Rhino.DeleteObject Pomline
+End Function
+
+Sub Krajnice()
+	Dim Krivka,direction,krajniceprofil(1),sirka
+	
+	Krivka = Rhino.GetObject("Vyber krivku pro tazeni", 4)
+	If IsNull(Krivka) Then
+		Rhino.Print("Nevybral jste krivku")
+		Exit Sub	
+	End If
+	
+	direction = Rhino.GetPoint("Urci smer")
+	If IsNull(direction) Then
+		Rhino.Print("Neurcil si smer")
+		Exit Sub	
+	End If
+	
+
+	
+	sirka = Rhino.GetReal("Urci sirku krajnice", 0.5, 0.1, 20)
+	If IsNull(sirka) Then
+		Rhino.Print("Neurcil jste sirku")
+		Exit Sub	
+	End If
+	
+	
+	Rhino.EnableRedraw vbFalse
+	If Rhino.IsLayer("Krajnice") Then
+		Rhino.CurrentLayer("Krajnice")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Krajnice", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Krajnice")
+	End If
+	
+	krajniceprofil(0) = Rhino.Addline(Array(0, 0, 0), Array(0.2, 0, -0.2 * 0.08))
+	krajniceprofil(1) = Rhino.Addline(Array(0, 0, 0), Array(sirka, 0, -sirka * 0.08))
+	'Urceni strany
+	Dim distance(1),Strana,pomprofil,pointoncurve,pombod
+	pointoncurve = closestpoint(Krivka, direction)
+	pomprofil = Vlozprofilkolmovbode(Krivka, Krajniceprofil(0), pointoncurve)
+	distance(0) = Rhino.Distance(Rhino.CurveEndPoint(Krajniceprofil(0)), direction)
+	Rhino.DeleteObject Krajniceprofil(0)
+	distance(1) = Rhino.Distance(pointoncurve, direction)
+	Vlozprofilkolmovbode Krivka, krajniceprofil(1), Rhino.CurveStartPoint(Krivka)
+	If distance(0) < distance(1) Then
+		Rhino.RotateObject krajniceprofil(1), Rhino.CurveStartPoint(Krivka), 180
+	End If
+	
+	Rhino.AddSweep1 Krivka, krajniceprofil(1)
+	Rhino.DeleteObject krajniceprofil(1)
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.EnableRedraw vbTrue
+End Sub

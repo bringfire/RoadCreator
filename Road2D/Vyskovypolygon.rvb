@@ -1,0 +1,47 @@
+﻿Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 14. září 2015 13:34:52
+
+Call Tvorbanivelety()
+Sub Tvorbanivelety()
+	
+	Dim Vpoints,Niveleta,i
+	Vpoints = Rhino.GetPolyline(, "Zadej první bod", "Zadej další bod", "Zadej další bod", "Zadej další bod")
+	If IsArray(VPoints) Then
+		
+		If Rhino.IsLayer("Vyskovy polygony") Then
+			Rhino.CurrentLayer("Vyskovy  polygony")
+		Else 
+			Rhino.Print "New layer: " & Rhino.AddLayer("Vyskovy  polygony", RGB(255, 0, 0))
+			Rhino.CurrentLayer("Tecnovy polygony")
+		End If
+		Niveleta = Rhino.Addpolyline(Vpoints)
+	Else
+		Rhino.Print("Nevytvoril jste výškový polygon")
+		Exit Sub
+	End If
+	
+	Dim delka,sklon,stred,vyska,delkaprint,sklonprint
+	i = 0
+	Do While i < Ubound(VPoints)
+		stred = Vpoints(i)(0) + ((Vpoints(i + 1)(0) - Vpoints(i)(0)) / 2)
+		delka = Vpoints(i + 1)(0) - Vpoints(i)(0)
+		vyska = (Vpoints(i + 1)(1) - Vpoints(i)(1)) / 10
+		sklon = (vyska / delka) * 100
+		delkaprint = (delka * 10 \ 1) / 10
+		sklonprint = (sklon * 100 \ 1) / 100
+		Rhino.AddText "d=" & CStr (delkaprint) & " m", Array(stred - 10, VPoints(i)(1) + (vyska * 5) + 18, 0), 3
+		Rhino.AddText "s=" & CStr (sklonprint) & " %", Array(stred - 10, VPoints(i)(1) + (vyska * 5) + 13, 0), 3
+		i = i + 1
+	Loop
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+
+	
+		
+End Sub

@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Company>RoadCreator</Company>
+    <Copyright>Copyright (c) 2026 RoadCreator</Copyright>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

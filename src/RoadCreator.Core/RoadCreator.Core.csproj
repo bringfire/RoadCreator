@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>RoadCreator.Core</RootNamespace>
+    <AssemblyName>RoadCreator.Core</AssemblyName>
+    <Description>Core math, models, and algorithms for road design. No Rhino dependency.</Description>
+  </PropertyGroup>
+
+
+</Project>

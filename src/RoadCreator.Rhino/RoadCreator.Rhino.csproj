@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net7.0-windows</TargetFramework>
+    <RootNamespace>RoadCreator.Rhino</RootNamespace>
+    <AssemblyName>RoadCreator.Rhino</AssemblyName>
+    <Description>RhinoCommon plugin for RoadCreator - commands, UI, layer management.</Description>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <UseWindowsForms>true</UseWindowsForms>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <NoWarn>NU1701;NU1603</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.102.3" />
+    <PackageReference Include="RhinoCommon" Version="8.0.23304.1001" IncludeAssets="compile" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RoadCreator.Core\RoadCreator.Core.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyRhp" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
+          DestinationFiles="$(OutputPath)$(AssemblyName).rhp" />
+  </Target>
+
+</Project>

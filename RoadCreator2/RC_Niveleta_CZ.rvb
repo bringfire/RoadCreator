@@ -1,0 +1,112 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 14. září 2015 13:34:52
+Call RC_Niveleta_CZ()
+Sub RC_Niveleta_CZ()
+	
+	Dim version,ts
+	version = Rhino.ExeVersion
+	ts = 1
+	If version = 6 Then
+		ts = 1000
+	End If
+	
+	Dim point,lastpoint,i
+	Dim delka,sklon,stred,vyska,delkaprint,sklonprint,krivka,oblouk,p
+	
+	Dim vrstvy,vrstva,vrstvyvyber(),name,part
+	i = 0
+	vrstvy = Rhino.LayerNames
+	For Each vrstva In vrstvy
+		part = Rhino.Strtok(vrstva, "::")
+		If Ubound(part) = 0 Then
+			If part(0) = "Terén" Then
+			ElseIf part(0) = "Default" Then
+			ElseIf part(0) = "3D model terénu" Then
+			ElseIf part(0) = "RC 3D modely" Then
+			ElseIf part(0) = "Svahy" Then
+			ElseIf part(0) = "RC_Databaze" Then
+			Else
+				
+				ReDim Preserve vrstvyvyber(i)
+				vrstvyvyber(i) = part(0)
+				i = i + 1
+			End If
+		End If
+	Next
+	
+	If isnull(vyber)Then
+		Rhino.Print("Neexistuje návrh trati")
+		Exit Sub
+	End If
+	
+	Dim vyber
+	vyber = Rhino.ListBox(vrstvyvyber, "Vyber vrstvu pro tvorbu tečnového polygonu", "RailCreator")
+	If isnull(vyber)Then
+		Rhino.Print("Nebyl vybrán návrh trati")
+		Exit Sub
+	End If
+	
+	
+	
+	
+	p = 0
+	i = 0
+	'Tvorba Nivelety
+	point = Rhino.GetPoint("Vyber začátek výškového polygonu")
+	If isnull(point)Then
+		Rhino.Print("Nevybral jste počátek výškového polygonu")
+		Exit Sub
+	End If
+	lastpoint = point
+	Rhino.Print "New layer: " & Rhino.AddLayer("Niveleta", RGB(255, 0, 0))
+	Rhino.CurrentLayer "Niveleta"
+	
+	Do While i < 1000
+		point = Rhino.GetPoint("Vyber další bod výškového polygonu", lastpoint)
+		If isnull(point)Then
+			If p = 0 Then
+				Rhino.Print("Nevybral jste další výškového polygonu")
+				Exit Sub
+			Else
+				oblouk = Rhino.AddArc(array(lastpoint(0), lastpoint(1) + 80, 0), 3.0, 180)
+				Rhino.RotateObject oblouk, array(lastpoint(0), lastpoint(1) + 80, 0), 90
+				Rhino.AddLine array(lastpoint(0), lastpoint(1) + 80, 0), array(lastpoint(0), lastpoint(1) + 83, 0)
+				If Rhino.IsLayer(vyber) Then
+					Rhino.CurrentLayer vyber
+				End If
+				Rhino.ParentLayer "Niveleta", vyber
+				Rhino.ExpandLayer  vyber, False
+				Exit Sub
+			End If
+			
+		End If
+		
+		If p = 0 Then
+		
+			
+		
+			Rhino.AddLine array(lastpoint(0), lastpoint(1), 0), array(lastpoint(0), lastpoint(1) + 83, 0)
+			oblouk = Rhino.AddArc(array(lastpoint(0), lastpoint(1) + 80, 0), 3.0, 180)
+			Rhino.RotateObject oblouk, array(lastpoint(0), lastpoint(1) + 80, 0), 270
+			p = 1
+		End If
+		krivka = Rhino.AddLine(lastpoint, point)
+		Rhino.CopyObject krivka, Array(0, 0, 0), Array(0, 80, 0)
+		Rhino.ObjectName krivka, vyber + " TecnovyPolygon"
+		Rhino.AddLine array(point(0), point(1), 0), array(point(0), point(1) + 80, 0)
+		stred = lastpoint(0) + ((point(0) - lastpoint(0)) / 2)
+		delka = point(0) - lastpoint(0)
+		vyska = (point(1) - lastpoint(1)) / 10
+		sklon = (vyska / delka) * 100
+		delkaprint = (delka * 10 \ 1) / 10
+		sklonprint = (sklon * 100 \ 1) / 100
+		Rhino.AddText "d=" & CStr (delkaprint) & " m", Array(stred - 10, lastpoint(1) + (vyska * 5) + 98, 0), 3 / ts
+		Rhino.AddText "s=" & CStr (sklonprint) & " %", Array(stred - 10, lastpoint(1) + (vyska * 5) + 92, 0), 3 / ts
+		lastpoint = point
+	Loop
+	
+	
+	
+End Sub

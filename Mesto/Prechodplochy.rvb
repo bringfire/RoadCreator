@@ -1,0 +1,69 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 8. ledna 2016 10:28:08
+
+Call Prechodplochy()
+Sub Prechodplochy()
+	Dim plochasilnice,startpoint,endpoint,sirka,prechod,angle,distance,i,plochasilnicepom
+	
+	plochasilnice = Rhino.GetObject("Vyber silnici na kterou chces umistit prechod", 24)
+	If IsNull(plochasilnice) Then
+		Rhino.Print "Nyvybral si silnici"
+		Exit Sub
+	End If
+	
+	startpoint = Rhino.Getpoint("Vyber zacatek prechodu")
+	If IsNull(startpoint) Then
+		Rhino.Print "Nyvybral si zacatek prechodu"
+		Exit Sub
+	End If
+	
+	endpoint = Rhino.Getpoint("Vyber konec prechodu", startpoint)
+	If IsNull(endpoint) Then
+		Rhino.Print "Nyvybral si konec prechodu"
+		Exit Sub
+	End If
+	
+	sirka = Rhino.GetReal("Urci sirku prechodu", 4)
+	If IsNull(sirka) Then
+		Rhino.Print "Nezadal si sirku prechodu"
+		Exit Sub
+	End If
+	If Rhino.IsLayer("Prechod") Then
+		Rhino.CurrentLayer("Prechod")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Prechod", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Prechod")
+	End If
+	
+	Rhino.EnableRedraw vbFalse
+	distance = Rhino.Distance(startpoint, endpoint)
+	prechod = Rhino.AddPlaneSurface(Rhino.WorldXYPlane, sirka, 0.5)
+	Rhino.MoveObject prechod, Array(0, 0, 0), Array(-sirka / 2, (distance + 1 - (distance \ 1)) / 4, 0)
+	angle = Rhino.Angle(startpoint, endpoint)
+	Rhino.MoveObject prechod, Array(0, 0, 0), startpoint 
+	
+	i = 0
+	Do While i < Rhino.Distance(startpoint, endpoint) 
+		Rhino.Rotateobject prechod, startpoint, (angle(0) + 270)
+		If i = 0 Then
+			plochasilnice = Rhino.SplitBrep(plochasilnice, prechod, True)
+		Else
+			plochasilnice = Rhino.SplitBrep(plochasilnicepom, prechod, True)
+		End If
+		plochasilnicepom = plochasilnice(1)
+		Rhino.Rotateobject prechod, startpoint, -(angle(0) + 270)	
+		Rhino.MoveObject prechod, Array(0, 0, 0), Array(0, 1, 0)
+		i = i + 1
+	Loop
+	Rhino.DeleteObject prechod
+
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.EnableRedraw vbTrue
+End Sub

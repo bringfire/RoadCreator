@@ -1,0 +1,57 @@
+﻿Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 29. února 2016 21:22:10
+
+Call Silnicezprofilumesto()
+Sub Silnicezprofilumesto()
+
+	If Rhino.IsLayer("Krivky pricny rez Silnice") Then
+		Rhino.LayerVisible "Krivky pricny rez Silnice", True
+	End If
+	
+	If Rhino.IsLayer("Vrstevnice") Then
+		Rhino.LayerLocked "Vrstevnice", True
+	End If
+	If Rhino.IsLayer("Hlavni vrstevnice") Then
+		Rhino.LayerLocked "Hlavni vrstevnice", True
+	End If
+	If Rhino.IsLayer("TEREN") Then
+		Rhino.LayerLocked "TEREN", True
+	End If
+	
+	Dim Pricnyrezy,Silnice,Trasa
+	Trasa = Rhino.GetObject("Vyber trasu silnice", 4)
+	If IsNull(Pricnyrezy) Then
+		Rhino.Print"Nevybral jste trasu silnice"
+		Exit Sub
+	End If
+	Rhino.CurrentView "Shora"
+	Pricnyrezy = Rhino.GetObjects("Vyber priční řezy pro vytvoření 3D silnice", 4)
+	If IsNull(Pricnyrezy) Then
+		Rhino.Print"Nevybral jste přičné řezy silnice"
+		Exit Sub
+	End If
+	
+
+	If Rhino.IsLayer("Silnice 3D") Then
+		Rhino.CurrentLayer("Silnice 3D")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Silnice 3D", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Silnice 3D")
+	End If
+	
+	Silnice = Rhino.addsweep1(Trasa, Pricnyrezy)
+	Rhino.DuplicateEdgeCurves Silnice(0)
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	
+	If Rhino.IsLayer("Krivky pricny rez Silnice") Then
+		Rhino.LayerVisible "Krivky pricny rez Silnice", False
+	End If
+End Sub

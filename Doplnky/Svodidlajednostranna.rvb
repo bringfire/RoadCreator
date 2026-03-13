@@ -1,0 +1,157 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 15. září 2015 9:55:39
+
+Call Svodidlajednostranna()
+
+Function Closestpointdistance(curve, point)
+	Dim  t, pt
+	t = Rhino.CurveClosestPoint(curve, point)
+	If Not IsNull(t) Then
+		pt = Rhino.EvaluateCurve(curve, t)
+	End If
+	Closestpointdistance = Rhino.Distance(pt, point)
+End Function
+
+Sub Svodidlajednostranna()
+	Dim Krivka,i,angle(1),Strana,Sloupekpoints,Hrany(7),Sloupekbase(2),Sloupek,kruznice,Kruzniceplocha,pomline,prunik,alfa,direction,krivkapom
+	
+	Krivka = Rhino.GetObject("Vyber krivku pro vlozeni svodidel", 4)
+	If IsNull(Krivka) Then
+		Rhino.Print("Nevybral jste krivku")
+		Exit Sub	
+	End If
+	
+	direction = Rhino.Getpoint("Urci smer svodidel ")
+	If IsNull(direction) Then
+		Rhino.Print "Nevybral jste smer"
+		Exit Sub
+	End If
+	
+	Rhino.EnableRedraw vbFalse
+	If Rhino.IsLayer("Sloupkysvodidla") Then
+		Rhino.CurrentLayer("Sloupkysvodidla")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Sloupkysvodidla", RGB(50, 90, 90))
+		Rhino.CurrentLayer("Sloupkysvodidla")
+	End If
+	Krivkapom = Rhino.OffsetCurve(Krivka, direction, 0.37)
+	Dim Pomupev,profilsvodidla,	profilsvodidlapoints(7),profil(),line(1)
+
+	Pomupev = Rhino.AddLine(Array(0, 0, 0), Array(0.1, 0, 0))
+	line(0) = Rhino.AddLine(Array(0, 0, 0.86), Array(0, -0.22, 0.82))
+	line(1) = Rhino.AddLine(Array(0, 0, 0.50), Array(0, -0.22, 0.60))
+	Sloupekbase(0) = Rhino.ExtrudeCurve(line(0), Pomupev)
+	Sloupekbase(1) = Rhino.ExtrudeCurve(line(1), Pomupev)
+	Sloupekpoints = Rhino.DivideCurveEquidistant(Krivkapom(0), 4)
+	ReDim Profil (UBound(Sloupekpoints))
+	Hrany(0) = Array(0, 0, -0.4)
+	Hrany(1) = Array(0.10, 0, -0.4)
+	Hrany(2) = Array(0.10, 0.14, -0.4)
+	Hrany(3) = Array(0, 0.14, -0.4)
+	Hrany(4) = Array(0, 0, 0.89)
+	Hrany(5) = Array(0.10, 0, 0.89)
+	Hrany(6) = Array(0.10, 0.14, 0.89)
+	Hrany(7) = Array(0, 0.14, 0.89)
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Sloupekbase(2) = Rhino.AddBox(Hrany)
+	
+	profilsvodidlapoints(0) = Array(-0.05, 0, -0.16)
+	profilsvodidlapoints(1) = Array(-0.10, 0, -0.16)
+	profilsvodidlapoints(2) = Array(-0.10, 0, -0.08)
+	profilsvodidlapoints(3) = Array(0.0, 0, -0.08)
+	profilsvodidlapoints(4) = Array(0.0, 0, 0.08)
+	profilsvodidlapoints(5) = Array(-0.10, 0, 0.08)
+	profilsvodidlapoints(6) = Array(-0.10, 0, 0.16)
+	profilsvodidlapoints(7) = Array(-0.05, 0, 0.16)
+	profilsvodidla = Rhino.AddPolyline(profilsvodidlapoints)
+	Rhino.MoveObject Profilsvodidla, Array(0, 0, 0), Array(-0.22, 0, 0.72)
+	Rhino.RotateObject Profilsvodidla, Array(0, 0, 0), 90
+	i = 0
+	'PRAVA/LEVA
+	Dim point(1),Pointdistance(1),Pointcoordinates(1)
+	
+	point(0) = Rhino.AddPoint(Array(0, 0.2, 0))
+	point(1) = Rhino.AddPoint(Array(0, -0.2, 0))
+	Rhino.MoveObjects point, Array(0, 0, 0), Sloupekpoints(i)
+	Kruznice = Rhino.AddCircle(Sloupekpoints(i), 0.1)
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik = Rhino.CurveSurfaceIntersection(Krivkapom(0), Kruzniceplocha)
+	alfa = Rhino.Angle(Sloupekpoints(i), prunik(0, 1))
+	Rhino.RotateObjects point, Sloupekpoints(i), 180 + alfa(0)
+	Pointcoordinates(0) = Rhino.PointCoordinates(point(0))
+	Pointcoordinates(1) = Rhino.PointCoordinates(point(1))
+	Pointdistance(0) = Closestpointdistance(krivka, Pointcoordinates(0))
+	Pointdistance(1) = Closestpointdistance(krivka, Pointcoordinates(1))
+	If Pointdistance(0) < Pointdistance(1) Then
+		Strana = 360
+	Else
+		Strana = 180
+	End If
+	Rhino.DeleteObject Kruznice
+	Rhino.DeleteObject Kruzniceplocha
+	Rhino.DeleteObjects point
+	Do While i =< UBound(Sloupekpoints)
+		If i = 0  Then
+			Profil(i) = Rhino.CopyObject(profilsvodidla, Array(0, 0, 1), Sloupekpoints(i))
+			Kruznice = Rhino.AddCircle(Sloupekpoints(i), 0.1)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivkapom(0), Kruzniceplocha)
+			alfa = Rhino.Angle(Sloupekpoints(i), prunik(0, 1))
+			Rhino.RotateObjects profil(i), Sloupekpoints(i), Strana + alfa(0)
+			i = i + 1
+			Rhino.DeleteObject Kruznice
+			Rhino.DeleteObject Kruzniceplocha
+		ElseIf i = UBound(Sloupekpoints) Then
+			Profil(i) = Rhino.CopyObject(profilsvodidla, Array(0, 0, 1), Sloupekpoints(i))
+			Kruznice = Rhino.AddCircle(Sloupekpoints(i), 0.1)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivkapom(0), Kruzniceplocha)
+			alfa = Rhino.Angle(Sloupekpoints(i), prunik(0, 1))
+			Rhino.RotateObjects profil(i), Sloupekpoints(i), Strana + 180 + alfa(0)
+			i = i + 1
+			Rhino.DeleteObject Kruznice
+			Rhino.DeleteObject Kruzniceplocha
+		Else
+			Profil(i) = Rhino.CopyObject(profilsvodidla, Array(0, 0, 0), Sloupekpoints(i))
+			Sloupek = Rhino.CopyObjects(Sloupekbase, Array(0.05, 0.07, 0), Sloupekpoints(i))
+			Kruznice = Rhino.AddCircle(Sloupekpoints(i), 0.1)
+			Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+			Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+			prunik = Rhino.CurveSurfaceIntersection(Krivkapom(0), Kruzniceplocha)
+			alfa = Rhino.Angle(prunik(0, 1), prunik(1, 1))
+			Rhino.RotateObjects Sloupek, Sloupekpoints(i), Strana + alfa(0)
+			Rhino.RotateObjects profil(i), Sloupekpoints(i), Strana + alfa(0)
+			i = i + 1
+			Rhino.DeleteObject Kruznice
+			Rhino.DeleteObject Kruzniceplocha
+		End If
+	Loop
+	If Rhino.IsLayer("Svodidloprofil") Then
+		Rhino.CurrentLayer("Svodidloprofil")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Svodidloprofil", RGB(250, 250, 250))
+		Rhino.CurrentLayer("Svodidloprofil")
+	End If
+	
+	Rhino.AddLoftSrf profil,,, 2
+	Rhino.Deleteobject Krivkapom(0)
+	Rhino.DeleteObjects Profil
+	Rhino.Deleteobject pomline
+	Rhino.DeleteObjects Sloupekbase
+	Rhino.Deleteobject profilsvodidla
+	Rhino.Deleteobject	Pomupev
+	Rhino.DeleteObjects line
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.EnableRedraw vbTrue
+
+End Sub

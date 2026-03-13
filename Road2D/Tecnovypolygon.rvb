@@ -1,0 +1,55 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 10. března 2016 14:04:31
+
+Call RC_Tecnovypolygon_CZ()
+Sub RC_Tecnovypolygon_CZ()
+
+	'PRIPRAVA
+	Dim krivka,krivkapoints
+	Rhino.CurrentView "Shora"
+	Rhino.CurrentView "Top"
+	If Rhino.IsLayer("3D model terénu") Then
+		Rhino.LayerVisible "3D model terénu", False
+	End If
+	Rhino.ProjectOsnaps True
+	krivkapoints = Rhino.GetPolyline("Vytvoř tečnový polygon")
+	If isnull(krivkapoints) Then
+		Exit Sub
+	End If
+	If Uboud(krivkapoints) = 0 Then
+		Exit Sub
+	End If
+	'VRSTVY
+
+	Dim D,L,LayerTP,LayerSilnice
+	LayerSilnice = "Silnice "
+	LayerTP = "Tečnový polygon"
+	Do While D = 0
+		If Rhino.IsLayer(LayerSilnice & CStr (L)) Then
+			L = L + 1
+		Else 
+			Rhino.AddLayer LayerSilnice & CStr (L), RGB(0, 0, 0)
+			Rhino.AddLayer LayerTP, RGB(255, 0, 0)
+			D = 1
+		End If
+	Loop
+	
+	Rhino.ProjectOsnaps False
+
+	krivka = Rhino.Addpolyline(krivkapoints)
+	Rhino.ObjectLayer krivka, LayerTP
+	Rhino.ParentLayer LayerTP, LayerSilnice
+	Rhino.ExplodeCurves krivka, True
+
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+
+
+	
+End Sub

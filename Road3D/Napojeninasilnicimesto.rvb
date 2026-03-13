@@ -1,0 +1,211 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 4. března 2016 13:03:03
+
+Call Napojenisilnicemesto()
+Function DoBrepSplit(brep, cutter)
+	
+	Dim saved, cmd  
+	DoBrepSplit = Null
+	saved = Rhino.SelectedObjects
+	Rhino.UnSelectAllObjects
+	Rhino.SelectObject brep
+	cmd = "_Split _SelID " & cutter & " _Enter"
+	Rhino.Command cmd, 0
+	DoBrepSplit = Rhino.SelectedObjects
+	Rhino.UnSelectAllObjects
+	If IsArray(saved) Then Rhino.SelectObjects(saved)
+ 
+End Function
+
+Function DoSplit(object, cutter)
+
+	' Declare local variables
+	Dim cmd
+
+	cmd = "_Split _SelID " & object & " _Enter _SelID " & cutter & " _Enter"
+	Call Rhino.Command(cmd, 0)
+	DoSplit = Rhino.LastCreatedObjects
+
+End Function
+
+Sub Napojenisilnicemesto()
+	Dim koncovyprofil3D,hranasilnice3D,polomer1,polomer2,koncovyprofilbod(1)
+	'Vyber
+
+	hranasilnice3D = Rhino.Getobject("Vyber hranu silnice pro napojeni", 4)
+	If IsNull(hranasilnice3D) Then
+		Rhino.Print "Nevybral jste hranu"
+		Exit Sub
+	End If
+
+
+	koncovyprofil3d = Rhino.Getobject("Vyber koncovy profil silnice pro napojeni", 4)
+	If IsNull(koncovyprofil3d) Then
+		Rhino.Print "Nevybral jste hranu"
+		Exit Sub
+	End If
+	
+	koncovyprofilbod(0) = Rhino.CurveStartPoint(koncovyprofil3D)
+	koncovyprofilbod(1) = Rhino.CurveEndPoint(koncovyprofil3D)
+	
+	polomer1 = Rhino.GetReal("Zadej polomer 1. oblouku", 7)
+	If IsNull(polomer1) Then
+		Rhino.Print "Nezadal jste polomer"
+		Exit Sub
+	End If
+	
+	polomer2 = Rhino.GetReal("Zadej polomer 2. oblouku", 7)
+	If IsNull(polomer2) Then
+		Rhino.Print "Nezadal jste polomer"
+		Exit Sub
+	End If
+	
+	Rhino.EnableRedraw vbFalse
+	'Promitani + promintuta krizovatka
+	Dim prhranasilnice,prprofil,Surface,profil(2),pombod(5),angle,prprofilpomocny,problouk(1), prmidpoint,prstred,prusecik(3)
+	Surface = Rhino.AddSrfPt(Array(Array(-50000, -50000, 0), Array(50000, -50000, 0), Array(50000, 50000, 0), Array(-50000, 50000, 0)))
+	prhranasilnice = Rhino.ProjectCurveToSurface(hranasilnice3D, Surface, ARray(0, 0, 1))
+	prprofil = Rhino.ProjectCurveToSurface(koncovyprofil3d, Surface, Array(0, 0, 1))
+	Rhino.DeleteObject Surface
+	prmidpoint = Rhino.CurveMidPoint(prprofil(0))
+	pombod(0) = Rhino.CurveStartPoint(prprofil(0))
+	pombod(1) = Rhino.CurveEndPoint(prprofil(0))
+	angle = Rhino.Angle(pombod(0), pombod(1))
+
+	'Stred krizovatky
+	Dim kruznice,stred3D
+	Profil(2) = Rhino.Addline(array(0, 0, 0), Array(0, 100, 0))
+	Rhino.MoveObject Profil(2), Array(0, 0, 0), prmidpoint
+	Rhino.RotateObject Profil(2), prmidpoint, angle(0)
+	
+	prstred = Rhino.CurveCurveIntersection(Profil(2), prhranasilnice(0))
+	If isnull(prstred) Then
+		Rhino.RotateObject Profil(2), prmidpoint, 180
+		angle(0) = angle(0) + 180
+		prstred = Rhino.CurveCurveIntersection(Profil(2), prhranasilnice(0))
+	End If
+	Profil(0) = Rhino.Addline(array(0, 0, 0), Array(0, 100, 0))
+	Rhino.MoveObject Profil(0), Array(0, 0, 0), pombod(0)
+	Rhino.RotateObject Profil(0), pombod(0), angle(0)
+	Profil(1) = Rhino.Addline(array(0, 0, 0), Array(0, 100, 0))
+	Rhino.MoveObject Profil(1), Array(0, 0, 0), pombod(1)
+	Rhino.RotateObject Profil(1), pombod(1), angle(0)
+	
+	'Tvorba oblouk
+
+	prusecik(0) = Rhino.CurveCurveIntersection(Profil(0), prhranasilnice(0))
+	prusecik(1) = Rhino.Curvecurveintersection(Profil(1), prhranasilnice(0))
+	Kruznice = Rhino.AddCircle(prusecik(0)(0, 1), 2)
+	prusecik(2) = Rhino.CurveCurveIntersection(Kruznice, prhranasilnice(0))
+	If Rhino.distance(prusecik(2)(0, 1), prstred(0, 1)) > Rhino.distance(prusecik(2)(1, 1), prstred(0, 1)) Then
+		pombod(2) = prusecik(2)(0, 1)
+	Else
+		pombod(2) = prusecik(2)(1, 1)
+	End If
+	Rhino.DeleteObject kruznice
+	
+	Kruznice = Rhino.AddCircle(prusecik(1)(0, 1), 2)
+	prusecik(3) = Rhino.CurveCurveIntersection(Kruznice, prhranasilnice(0))
+	If Rhino.distance(prusecik(3)(0, 1), prstred(0, 1)) > Rhino.distance(prusecik(3)(1, 1), prstred(0, 1)) Then
+		pombod(3) = prusecik(3)(0, 1)
+	Else
+		pombod(3) = prusecik(3)(1, 1)
+	End If
+	Rhino.DeleteObject kruznice
+	
+	problouk(0) = Rhino.Filletcurves(profil(0), pombod(0), prhranasilnice(0), pombod(2), polomer1)
+	If IsNull(problouk(0)) Then
+		Rhino.Print "Krizovatka o zadanych parametrech se nevejde"
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	problouk(1) = Rhino.Filletcurves(profil(1), pombod(1), prhranasilnice(0), pombod(3), polomer2)
+	If IsNull(problouk(1)) Then
+		Rhino.Print "Krizovatka o zadanych parametrech se nevejde"
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	pombod(4) = Rhino.CurveCurveIntersection(problouk(0)(2), prhranasilnice(0))
+	pombod(5) = Rhino.CurveCurveIntersection(problouk(1)(2), prhranasilnice(0))
+	'Rhino.AddPoint pombod(4)(0, 1)
+	'	Rhino.AddPoint pombod(5)(0, 1)
+	
+	'Tvorba horni plochy
+	Dim prusecik3D(1), pomline,krajeplochy(3),plochakrizovatky,pomocnakrivka(1)
+	Pomline = Rhino.AddLine(Array(0, 0, -50000), Array(0, 0, 50000))
+	Rhino.MoveObject Pomline, Array(0, 0, 0), pombod(4)(0, 1)
+	prusecik3D(0) = Rhino.CurveCurveintersection(pomline, hranasilnice3D)
+	Rhino.MoveObject Pomline, pombod(4)(0, 1), pombod(5)(0, 1)
+	prusecik3D(1) = Rhino.CurveCurveintersection(pomline, hranasilnice3D)
+	Rhino.moveobject pomline, pombod(5)(0, 1), prstred(0, 1)
+	stred3D = Rhino.CurveCurveIntersection(pomline, hranasilnice3D)
+	'	Rhino.AddPoint stred3D(0, 1)
+	
+	'Rhino.AddPoint(prusecik3D(1)(0, 1))
+	'Rhino.AddPoint(prusecik3D(0)(0, 1))
+	Rhino.DeleteObject Pomline
+	
+	krajeplochy(0) = koncovyprofil3D
+	krajeplochy(1) = Rhino.AddLine(prusecik3D(0)(0, 1), koncovyprofilbod(0))
+	krajeplochy(2) = Rhino.AddLine(prusecik3D(1)(0, 1), koncovyprofilbod(1))
+	pomocnakrivka(0) = DoBrepSplit(hranasilnice3D, krajeplochy(1))
+	If Rhino.IsPointOnCurve(pomocnakrivka(0)(0), stred3D(0, 1)) Then
+		pomocnakrivka(1) = DoBrepSplit(pomocnakrivka(0)(0), krajeplochy(2))
+	Else
+		pomocnakrivka(1) = DoBrepSplit(pomocnakrivka(0)(1), krajeplochy(2))
+	End If
+	
+	If Rhino.IsPointOnCurve(pomocnakrivka(1)(0), stred3D(0, 1)) Then	
+		krajeplochy(3) = pomocnakrivka(1)(0)
+	Else
+		krajeplochy(3) = pomocnakrivka(1)(0)
+	End If
+	Rhino.ObjectName krajeplochy(3), "Hrana"
+	plochakrizovatky = Rhino.AddNetworkSrf(krajeplochy)
+	
+	'Vytvorenikrizovatky
+	Dim Krajniceplocha(1),Join(1),krizovatkaplochy(1),krizovatka,Mid3Dpoint
+	Mid3DPoint = Rhino.CurveMidPoint(koncovyprofil3d)
+	'Rhino.AddPoint Mid3DPoint
+	join(0) = Rhino.JoinCurves(Array(problouk(0)(0), problouk(0)(2)))
+	join(1) = Rhino.JoinCurves(Array(problouk(1)(0), problouk(1)(2)))
+	Krajniceplocha(0) = Rhino.ExtrudeCurveStraight(join(0)(0), Array(0, 0, 0), Array(0, 0, 100000))
+	Krajniceplocha(1) = Rhino.ExtrudeCurveStraight(join(1)(0), Array(0, 0, 0), Array(0, 0, 100000))
+	Rhino.Moveobject Krajniceplocha(0), Array(0, 0, 0), Array(0, 0, -50000)
+	Rhino.Moveobject Krajniceplocha(1), Array(0, 0, 0), Array(0, 0, -50000)
+	
+	krizovatkaplochy(0) = Dosplit(plochakrizovatky, KRajniceplocha(0))
+	
+	If Rhino.IsPointOnSurface(krizovatkaplochy(0)(0), Mid3DPoint) Then
+		Plochakrizovatky = krizovatkaplochy(0)(0)
+		Rhino.DeleteObject krizovatkaplochy(0)(1)
+	Else
+		Plochakrizovatky = krizovatkaplochy(0)(1)
+		Rhino.DeleteObject krizovatkaplochy(0)(0)
+	End If
+	If Rhino.IsLayer("Silnice 3D") Then
+		Rhino.CurrentLayer("Silnice 3D")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Silnice 3D", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Silnice 3D")
+	End If
+	
+	krizovatkaplochy(1) = Dosplit(plochakrizovatky, KRajniceplocha(1))
+	If Rhino.IsPointOnSurface(krizovatkaplochy(1)(0), Mid3DPoint) Then
+		Plochakrizovatky = krizovatkaplochy(1)(0)
+		Rhino.DeleteObject krizovatkaplochy(1)(1)
+	Else
+		Plochakrizovatky = krizovatkaplochy(1)(1)
+		Rhino.DeleteObject krizovatkaplochy(1)(0)
+	End If
+	
+
+	'Mazani
+	Rhino.DeleteObjects Krajniceplocha
+	Rhino.DeleteObjects Array(join(0)(0), join(1)(0))
+	Rhino.DeleteObjects Array(krajeplochy(1), krajeplochy(2), prhranasilnice(0), prprofil(0))
+	Rhino.DeleteObjects Array(problouk(0)(0), problouk(0)(1), problouk(0)(2), problouk(1)(0), problouk(1)(1), problouk(1)(2), Profil(0), Profil(1), Profil(2))
+	Rhino.EnableRedraw vbTrue
+End Sub

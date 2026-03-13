@@ -1,0 +1,141 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 17. prosince 2015 10:19:52
+
+Call Krizovatkajednoducha()
+Sub Krizovatkajednoducha()
+	Dim stred,rameno,pocetramen,p,osaramene,bodramene,bodyramene(1),stredpoint
+	
+	Rhino.CurrentView "Shora"
+	stred = Rhino.GetPoint("Vyber stred krizovatky")
+	If IsNull(stred) Then
+		Rhino.Print "Nevybral jste stred krizovatky"
+		Exit Sub
+	End If
+	bodyramene(0) = stred
+
+	
+	pocetramen = Rhino.GetReal("Zadej pocet ramen krizovatky", 3)
+	If IsNull(pocetramen) Then
+		Rhino.Print "Nezadak jste pocet ramen"
+		Exit Sub
+	End If
+	If Rhino.IsLayer("Krizovatka") Then
+		Rhino.CurrentLayer("Krizovatka")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Krizovatka", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Krizovatka")
+	End If
+	stredpoint = Rhino.AddPoint(stred)
+	ReDim rameno(pocetramen-1)
+	ReDim osaramene(pocetramen-1)
+	ReDim bodramene(pocetramen-1)
+	p = 0
+	Do While p < pocetramen
+		rameno(p) = Rhino.GetPoint("Zadej smer " & CStr(p + 1) & ". ramene krizovatky(Postupuj proti smeru hodinovych rucicek", stred, 25)
+		If IsNull(rameno(p)) Then
+			Rhino.Print "Nezadal jste smer ramene"
+			Exit Sub
+		End If
+		bodyramene(1) = rameno(p)
+	
+		osaramene(p) = Rhino.Addcurve(bodyramene)
+		bodramene(p) = Rhino.AddPoint(rameno(p))
+		Rhino.AddText "" & CStr(p + 1) & "", rameno(p), 3
+		p = p + 1
+		
+	Loop
+	
+	'Tvorba hran
+	
+	Dim HranaL(),HranaP(),SirkaL(),SirkaP(),souradnice
+	ReDim HranaL(pocetramen-1)
+	ReDim HranaP(pocetramen-1)
+	ReDim SirkaL(pocetramen-1)
+	ReDim SirkaP(pocetramen-1)
+	p = 0
+	Do While p < pocetramen
+		SirkaP(p) = Rhino.GetReal("Zadej sirku praveho pruhu ramene cislo" & CStr(p + 1) & ".", 3.75)
+		Rhino.RotateObject bodramene(p), stred, +50
+		souradnice = Rhino.PointCoordinates(bodramene(p))
+		HranaP(p) = Rhino.Offsetcurve(osaramene(p), souradnice, SirkaP(p))
+		
+		SirkaL(p) = Rhino.GetReal("Zadej sirku leveho pruhu ramene cislo" & CStr(p + 1) & ".", 3.75)
+		Rhino.RotateObject bodramene(p), stred, -100
+		souradnice = Rhino.PointCoordinates(bodramene(p))
+		HranaL(p) = Rhino.Offsetcurve(osaramene(p), souradnice, SirkaL(p))
+		Rhino.RotateObject bodramene(p), stred, 50
+		
+		p = p + 1
+	Loop
+	
+	'Zaoblovani hran
+	Dim Hranakrizovatky(),polomer(),midpt
+	ReDim Hranakrizovatky(pocetramen-1)
+	ReDim polomer(pocetramen-1)
+	p = 0
+	Do While p < pocetramen
+		
+		If p = (pocetramen - 1) Then
+			polomer(p) = Rhino.GetReal("Zadej polomer mezi " & CStr(p + 1) & ". a 1. ramenem", 9)
+			Hranakrizovatky(p) = Rhino.FilletCurves(HranaP(p)(0), Rhino.CurveMidPoint(HranaP(p)(0)), HranaL(0)(0), Rhino.CurveMidPoint(HranaL(0)(0)), polomer(p), True)
+			If IsArray(Hranakrizovatky(p)) Then
+				Call Rhino.DeleteObject(HranaP(p)(0))
+				Call Rhino.DeleteObject(HranaL(0)(0))
+			Else
+				Hranakrizovatky(p) = Rhino.JoinCurves(Array(HranaL(0)(0), HranaP(p)(0)))
+			End If
+			
+			Rhino.ScaleObject osaramene(p), stred, Array(0.5, 0.5, 0.5)
+			Rhino.MoveObject osaramene(p), stred, Rhino.PointCoordinates(bodramene(p))
+			
+		Else
+			polomer(p) = Rhino.GetReal("Zadej polomer mezi " & CStr(p + 1) & ". a " & CStr(p + 2) & " ramenem", 8)
+			Hranakrizovatky(p) = Rhino.FilletCurves(HranaP(p)(0), Rhino.CurveMidPoint(HranaP(p)(0)), HranaL(p + 1)(0), Rhino.CurveMidPoint(HranaL(p + 1)(0)), polomer(p), True)
+			If IsArray(Hranakrizovatky(p)) Then
+				Call Rhino.DeleteObject(HranaP(p)(0))
+				Call Rhino.DeleteObject(HranaL(p + 1)(0))
+			Else
+				Hranakrizovatky(p) = Rhino.JoinCurves(Array(HranaP(p)(0), HranaL(p + 1)(0)))
+				Rhino.RotateObject Hranakrizovatky(p)(0), Rhino.CurveMidPoint(Hranakrizovatky(p)(0)), 180
+			End If
+			
+			Rhino.ScaleObject osaramene(p), stred, Array(0.5, 0.5, 0.5)
+			Rhino.MoveObject osaramene(p), stred, Rhino.PointCoordinates(bodramene(p))
+			
+		End If
+		p = p + 1
+	Loop
+	
+
+	'Tvorba krizovatkovy plochy
+	Dim Krizovatkaplocha,profil(),Startbod,Endbod,Krivkykrizovatky
+	ReDim profil(pocetramen-1)
+	ReDim Startbod(pocetramen-1)
+	ReDim Endbod(pocetramen-1)
+	ReDim Krivkykrizovatky(2*pocetramen-1)
+	
+	p = 0
+	Do While p < pocetramen
+		If p = (pocetramen - 1) Then
+			Startbod(p) = Rhino.CurveStartPoint(Hranakrizovatky(0)(0))
+		Else
+			Startbod(p) = Rhino.CurveStartPoint(Hranakrizovatky(p + 1)(0))
+		End If
+		Endbod(p) = Rhino.CurveEndPoint(Hranakrizovatky(p)(0))
+		profil(p) = Rhino.AddLine(Startbod(p), Endbod(p))
+		
+		Krivkykrizovatky(2 * p) = Hranakrizovatky(p)(0)
+		Krivkykrizovatky((2 * p) + 1) = profil(p)
+		p = p + 1
+	Loop
+	Krizovatkaplocha = Rhino.AddPlanarSrf(Krivkykrizovatky)
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.EnableRedraw vbTrue
+End Sub

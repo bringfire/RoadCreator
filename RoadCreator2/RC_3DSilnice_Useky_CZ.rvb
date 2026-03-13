@@ -1,0 +1,562 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version úterý 11. prosince 2018 13:43:31
+Function DoSplit(object, cutter)
+	Dim cmd
+	cmd = "_Split _SelID " & object & " _Enter _SelID " & cutter & " _Enter"
+	Call Rhino.Command(cmd, 0)
+	DoSplit = Rhino.LastCreatedObjects
+End Function
+
+Function Closestpoint(curve, point)
+	Dim  t
+	t = Rhino.CurveClosestPoint(curve, point)
+	If Not IsNull(t) Then
+		Closestpoint = Rhino.EvaluateCurve(curve, t)
+	End If
+End Function
+
+Call RC_3DSilnice_Usek_CZ()
+Sub RC_3DSilnice_Usek_CZ()
+
+	Dim moznosti,moznost
+	Moznosti = Array("S 6,5", "S 7,5", "S 9,5", "S 11,5", "S 20,75", "S 24,5", "D 25,5", "D 27,5", "D 33, 5", "D 4/8")
+	
+	
+	
+	Dim trasa,Starttrasa,Endtrasa,name,parts,vyber,part
+	trasa = Rhino.GetObject("Vyber 3D trasu silnice pro vytvoření 3D modelu úseku", 4)
+	If isnull(trasa)Then
+		Rhino.Print("Nevybral si trasu")
+		Exit Sub
+	Else
+		Starttrasa = Rhino.CurveStartPoint(trasa)
+		Endtrasa = Rhino.CurveEndPoint(trasa)
+	End If
+	
+	name = rhino.ObjectName(trasa)
+	parts = Rhino.Strtok(name, " ")
+	vyber = parts(0)
+	'vyber osy
+	Dim osa,nameparts,vybery
+	vybery = Rhino.ObjectsByLayer(vyber + "::Tečnový polygon")
+	For Each part In vybery
+		name = Rhino.ObjectName(part)
+		nameparts = Rhino.Strtok(name, " ")
+		If  nameparts(1) = Cstr(Ubound(vybery) + 1) Then
+			osa = part
+		End If		
+	Next
+	Rhino.LayerLocked vyber + "::Tečnový polygon", False
+	If isnull(osa)Then
+		Rhino.Print("Nebyla nalezena osa navrhovane silnice")
+		Exit Sub
+	End If
+	
+	
+	Dim startpoint,Endpoint,usek
+	Startpoint = Rhino.GetPointOnCurve(trasa, "Urči začátek úseku")
+	If isnull(Startpoint)Then
+		Rhino.Print("Úsek začne od začátku trasy")
+	End If
+	
+	
+	Endpoint = Rhino.GetPointOnCurve(trasa, "Urči konec úseku")
+	If isnull(Startpoint)Then
+		Rhino.Print("Úsek bude zakončen na konci trasy")
+	End If
+	
+	Dim typSilnice
+	
+	typSilnice = Rhino.ListBox(moznosti, "Vyber kategorii silnice pro vytvoreni 3D modelu", "RailCreator")
+	If isnull(vyber)Then
+		Rhino.Print("Nebyla vybrána kategorie silnice")
+		Exit Sub
+	End If
+	
+	Dim p,pmax,prov
+	prov = Rhino.GetReal("Urci pricny sklon v prime", 2.5, 0, 4)
+	If IsNull(p) Then
+		Rhino.Print("Neurcil jste pricny sklon v prime")
+		Exit Sub	
+	End If
+	
+	pmax = Rhino.GetReal("Urci pricny sklon v oblouku", 4, 4, 20)
+	If IsNull(pmax) Then
+		Rhino.Print("Neurcil jste pricny sklon v oblouku")
+		Exit Sub	
+	End If
+	
+	Dim Moznostikrajinice,Vychozi,Krajnice
+	Moznostikrajinice = Array("Krajnice", "Ne", "Ano")
+	Vychozi = Array(True)
+	Krajnice = Rhino.GetBoolean("Chcete vytvorit krajnice?", Moznostikrajinice, Vychozi)
+	If IsNull(Krajnice) Then
+		Exit Sub	
+	End If
+	
+	If Krajnice(0) = True Then
+		Dim Svodidla,Moznostivyberusvodidla
+		Moznostivyberusvodidla = Array("Osazeni", "Smerovesloupky", "Svodidla")
+		Svodidla = Rhino.GetBoolean("Nezpevnena krajnice?", Moznostivyberusvodidla, Vychozi)
+		If IsNull(Svodidla) Then
+			Exit Sub	
+		End If
+		
+		Dim krajnicesirka
+		If svodidla(0) = True Then
+			krajnicesirka = 0.5 + 1
+		Else
+			krajnicesirka = 0.5 + 0.25
+		End If
+	End If
+	
+	
+	' Tvroba useku
+	
+	Dim trasacopy,Spoint,Epoint,split2,split,souradnice,i
+	'	Rhino.AddLayer "Úseky"
+	'	Rhino.CurrentLayer"Úseky"
+	trasacopy = Rhino.copyobject(trasa, Array(0, 0, 0), Array(0, 0, 0))
+	Rhino.ObjectLayer trasacopy, "Úseky"
+
+	
+	'Nic nevybrano
+	If isnull(Startpoint) And isnull(Endpoint) Then
+		usek = trasacopy
+		Rhino.DeleteObject trasacopy
+	End If
+	
+	'Vybrany start a end point
+	If  Not isnull(Startpoint) And Not isnull(Endpoint) Then
+		Spoint = Rhino.Addpoint(Startpoint)
+		Epoint = Rhino.AddPoint(Endpoint)
+		split = Dosplit(trasacopy, Spoint)
+		Souradnice = Rhino.PointCoordinates(Epoint)
+		If isnull(split) Then
+			part = trasacopy
+			i = 0
+		Else
+			If	Rhino.IsPointOnCurve(split(1), souradnice) = True Then
+				part = split(1)
+				Rhino.DeleteObject split(0)
+				i = 0
+			Else
+				part = split(0)
+				Rhino.DeleteObject split(1)
+				i = 1
+			End If
+		End If
+		
+		split2 = Dosplit(part, Epoint)
+		If isnull(split) Then
+			usek = part
+		Else
+			usek = split2(i)
+			If i = 0 Then
+				Rhino.DeleteObject split2(1)
+			Else
+				Rhino.DeleteObject split2(0)
+			End If
+			
+		End If
+		Rhino.DeleteObject Spoint
+		Rhino.DeleteObject Epoint
+	End If
+
+	'Vybrany start point
+	If  Not isnull(Startpoint) And isnull(Endpoint) Then
+		Spoint = Rhino.Addpoint(Startpoint)
+		split = Dosplit(trasacopy, Spoint)
+	
+		If isnull(split) Then
+			usek = trasacopy
+		Else
+			usek = split(1)
+			Rhino.DeleteObject split(0)
+		End If
+		Rhino.DeleteObject Spoint	
+	End If
+	
+	'Vybrany end point
+	If   isnull(Startpoint) And Not isnull(Endpoint) Then
+		Epoint = Rhino.Addpoint(Startpoint)
+		split = Dosplit(trasacopy, Epoint)
+	
+		If isnull(split) Then
+			usek = trasacopy
+		Else
+			usek = split(0)
+			Rhino.DeleteObject split(1)
+		End If
+		Rhino.DeleteObject Epoint	
+	End If
+	
+	Startpoint = Rhino.CurveStartPoint(usek)
+	Endpoint = Rhino.CurveEndPoint(usek)
+
+	'Vyhledani koncovych a dulezity bodu
+	
+	'Vyber dulezitych bodu
+	Dim body,bod,bodyID,sortval,sortbody,dulbody,Line,souradnicebod,curvepar,tangent,gama,pridat(1),distance,staniceni(1)
+	'Dulezite body
+	body = rhino.Objectsbylayer(vyber + "::3D Trasa::3D důležité body")
+	pridat(0) = True
+	pridat(1) = True
+	For Each bod In body
+		If Rhino.Distance(Rhino.PointCoordinates(bod), Startpoint) < 0.02 Then
+			pridat(0) = False
+		End If
+		
+		If Rhino.Distance(Rhino.PointCoordinates(bod), Endpoint) < 0.02 Then
+			pridat(1) = False
+		End If
+	Next
+	'Pridani bodů
+	
+	Rhino.LayerLocked vyber + "::Tečnový polygon", False
+	Dim pompoint,SPPoint,Opart,EPPoint
+	If pridat(0) = True Then
+		SPoint = Rhino.AddPoint(Startpoint)
+		Pompoint = Array(Startpoint(0), Startpoint(1), 0)
+		SPPoint = Closestpoint(osa, pompoint)
+		SPPoint = Rhino.AddPoint(SPPoint)
+		split = Dosplit(osa, SPpoint)
+		Staniceni(0) = Rhino.CurveLength(split(0))
+		Opart = Rhino.JoinCurves(Array(split(0), split(1)), True)
+		osa = Opart(0)
+	End If
+	
+	If pridat(1) = True Then
+		EPoint = Rhino.AddPoint(Endpoint)
+		Pompoint = Array(Endpoint(0), Endpoint(1), 0)
+		EPPoint = Closestpoint(osa, pompoint)
+		EPPoint = Rhino.AddPoint(EPPoint)
+		split = Dosplit(osa, EPpoint)
+		Staniceni(1) = Rhino.CurveLength(split(0))
+		Opart = Rhino.JoinCurves(Array(split(0), split(1)), True)
+		osa = Opart(0)
+	End If
+	Rhino.LayerLocked vyber + "::Tečnový polygon", True
+	
+	
+	
+	'Sortovani bodů
+	ReDim bodyID(Ubound(body))
+	ReDim sortval(Ubound(body))
+	i = 0
+	For Each bod In body
+		name = Rhino.ObjectName(bod)
+		Rhino.SelectObject bod
+		bodyID(i) = Rhino.Strtok(name, " ")
+		sortval(i) = CDbl(bodyID(i)(2))
+		i = i + 1
+	Next
+	sortbody = Rhino.SortNumbers(sortval, True)
+	
+	ReDim dulbody(Ubound(body))
+	i = 0
+	Do While i < ubound(body) + 1
+		p = 0
+		Do Until sortbody(i) = sortval(p)
+			p = p + 1
+		Loop
+	
+		'Uhel natoceni
+		souradnicebod = Rhino.PointCoordinates(body(p))
+		curvepar = Rhino.CurveClosestPoint(osa, array(souradnicebod(0), souradnicebod(1), 0))
+		tangent = Rhino.CurveTangent(osa, curvepar)
+		gama = Rhino.Angle(Array(0, 0, 0), tangent)
+		
+		'Vytvoreni bodu
+		dulbody(i) = Array(souradnicebod, bodyID(p)(1), bodyID(p)(2), gama(0))
+		i = i + 1
+	Loop
+	
+	Dim znak,newbody(),D
+	ReDim newbody(0)
+	newbody(0) = dulbody(0)
+	
+	i = 1
+	p = 0
+	Do While i < (Ubound(body) + 1)
+		
+		If pridat(0) = True Then
+			If staniceni(0) < Cdbl(dulbody(i)(2))Then
+				curvepar = Rhino.CurveClosestPoint(osa, Rhino.PointCoordinates(SPpoint))
+				tangent = Rhino.CurveTangent(osa, curvepar)
+				gama = Rhino.Angle(Array(0, 0, 0), tangent)
+				If dulbody(i)(1) = "R" And dulbody(i - 1)(1) = "R" Then
+					znak = "R"
+					D = 0
+				End If
+				
+				If dulbody(i)(1) = "P" And dulbody(i - 1)(1) = "P" Then
+					znak = "P"
+					D = 0
+				End If
+				
+				If dulbody(i)(1) = "L" And dulbody(i - 1)(1) = "L" Then
+					znak = "L"
+					D = 0
+				End If
+				
+				If dulbody(i)(1) = "L" And dulbody(i - 1)(1) = "R" Then
+					znak = "LM"
+					D = 1 * ((staniceni(0) - Cdbl(dulbody(i - 1)(2))) / (Cdbl(dulbody(i)(2)) - Cdbl(dulbody(i - 1)(2))))
+				End If
+				
+				If dulbody(i)(1) = "P" And dulbody(i - 1)(1) = "R" Then
+					znak = "PM"
+					D = 1 * ((staniceni(0) - Cdbl(dulbody(i - 1)(2))) / (Cdbl(dulbody(i)(2)) - Cdbl(dulbody(i - 1)(2))))
+				End If
+				
+				If dulbody(i)(1) = "R" And dulbody(i - 1)(1) = "L" Then
+					znak = "LM"
+					D = 1 * ((Cdbl(dulbody(i)(2)) - staniceni(0)) / (Cdbl(dulbody(i)(2)) - Cdbl(dulbody(i - 1)(2))))
+				End If
+				
+				If dulbody(i)(1) = "R" And dulbody(i - 1)(1) = "P" Then
+					znak = "PM"
+					D = 1 * ((Cdbl(dulbody(i)(2)) - staniceni(0)) / (Cdbl(dulbody(i)(2)) - Cdbl(dulbody(i - 1)(2))))
+			
+				End If
+
+				
+				pridat(0) = False
+				p = p + 1
+				ReDim Preserve newbody(p)
+				newbody(p) = Array(Startpoint, znak, staniceni(0), gama(0), Cstr(D))
+				Rhino.Objectname SPoint, vyber + " " + znak + " " + Cstr(staniceni(0))
+				Rhino.ObjectLayer Spoint, vyber + "::3D Trasa::3D důležité body"
+			End If
+		End If
+		
+		If pridat(1) = True Then
+			If staniceni(1) < Cdbl(dulbody(i)(2))Then
+				curvepar = Rhino.CurveClosestPoint(osa, Rhino.PointCoordinates(EPpoint))
+				tangent = Rhino.CurveTangent(osa, curvepar)
+				gama = Rhino.Angle(Array(0, 0, 0), tangent)
+				If dulbody(i)(1) = "R" And dulbody(i - 1)(1) = "R" Then
+					znak = "R"
+					D = 0
+				End If
+				
+				If dulbody(i)(1) = "P" And dulbody(i - 1)(1) = "P" Then
+					znak = "P"
+					D = 0
+				End If
+				
+				If dulbody(i)(1) = "L" And dulbody(i - 1)(1) = "L" Then
+					znak = "L"
+					D = 0
+				End If
+				
+				If dulbody(i)(1) = "L" And dulbody(i - 1)(1) = "R" Then
+					znak = "LM"
+					D = 1 * ((staniceni(1) - Cdbl(dulbody(i - 1)(2))) / (Cdbl(dulbody(i)(2)) - Cdbl(dulbody(i - 1)(2))))
+				End If
+				
+				If dulbody(i)(1) = "P" And dulbody(i - 1)(1) = "R" Then
+					znak = "PM"
+					D = 1 * ((staniceni(1) - Cdbl(dulbody(i - 1)(2))) / (Cdbl(dulbody(i)(2)) - Cdbl(dulbody(i - 1)(2))))
+				End If
+				
+				If dulbody(i)(1) = "R" And dulbody(i - 1)(1) = "L" Then
+					znak = "LM"
+					D = 1 * ((Cdbl(dulbody(i)(2)) - staniceni(1)) / (Cdbl(dulbody(i)(2)) - Cdbl(dulbody(i - 1)(2))))
+				End If
+				
+				If dulbody(i)(1) = "R" And dulbody(i - 1)(1) = "P" Then
+					znak = "PM"
+					D = 1 * ((Cdbl(dulbody(i)(2)) - staniceni(1)) / (Cdbl(dulbody(i)(2)) - Cdbl(dulbody(i - 1)(2))))
+				End If
+				
+				
+				p = p + 1
+				ReDim Preserve newbody(p)
+				newbody(p) = Array(Endpoint, znak, staniceni(1), gama(0), Cstr(D))
+				pridat(1) = False
+				Rhino.Objectname EPoint, vyber + " " + znak + " " + Cstr(staniceni(1))
+				Rhino.ObjectLayer Epoint, vyber + "::3D Trasa::3D důležité body"
+			End If
+		End If
+	
+		p = p + 1
+		ReDim Preserve newbody(p)
+		newbody(p) = dulbody(i)
+		i = i + 1
+	Loop
+	
+	'Vybrani bodu na useku
+	Dim usekbody()
+	i = 0
+	For Each bod In newbody
+		pompoint = Closestpoint(usek, bod(0))
+		If Rhino.Distance(pompoint, bod(0)) < 0.02 Then
+			ReDim Preserve usekbody(i)
+			usekbody(i) = bod			
+			i = i + 1
+		End If	
+	Next
+	
+	
+	Dim profily(),domain,databodu,R,addbod,profilybodu(),Rozsireni,profil,Z,M
+	
+	Dim Silnice,Strednipas
+	Strednipas = 0
+	Select Case typSilnice
+		Case "S 6,5"
+			Silnice = 2.75
+		Case "S 7,5"
+			Silnice = 3.25
+		Case "S 9,5"
+			Silnice = 4.25
+		Case "S 11,5"
+			Silnice = 5.25
+		Case "S 20,75"
+			Silnice = 10.25
+			Strednipas = 1.25
+		Case "S 24,5"
+			Silnice = 10.75
+			Strednipas = 3
+		Case "D 25,5"
+			Silnice = 11.25
+			Strednipas = 3
+		Case "D 27,5"
+			Silnice = 12
+			Strednipas = 3.5
+		Case "D 33,5"
+			Silnice = 15
+			Strednipas = 3.5
+		Case "D 4/8"
+			Silnice = 8
+			Strednipas = 4
+		Case Else
+			Silnice = 3.25
+	End Select
+	
+	
+	ReDim profily(Ubound(usekbody))
+	i = 0
+	
+	If Strednipas = 0 Then
+		If Krajnice(0) = True Then 
+			ReDim profilybodu(4)
+		Else
+			ReDim profilybodu(2)
+		End If
+	Else
+		If Krajnice(0) = True Then 
+			ReDim profilybodu(5)
+		Else
+			ReDim profilybodu(3)
+		End If
+	End If
+	
+	
+	
+	For Each bod In usekbody
+		If bod(1) = "P" Or bod(1) = "L" Then
+		
+			domain = Rhino.CurveClosestPoint(usek, bod(0))
+			databodu = Rhino.CurveCurvature(usek, domain)
+			R = databodu(3)
+		Else
+			R = 500
+		End If
+		
+		Rozsireni = 0
+		
+		If R < 250 Then
+			If R < 250 And R >= 200 Then
+				Rozsireni = 0.2
+			ElseIf R < 200 And R >= 170 Then
+				Rozsireni = 0.25
+			ElseIf R < 170 And R >= 141 Then
+				Rozsireni = 0.30
+			ElseIf R < 141 And R >= 125 Then
+				Rozsireni = 0.35
+			ElseIf R < 125 And R >= 110 Then
+				Rozsireni = 0.4
+			Else 
+				Rozsireni = 0.5
+			End If
+			If typSilnice = "S 6,5" Then
+				Rozsireni = Rozsireni + 0.3
+			End If
+			If typSilnice = "S 7,5" Then
+				Rozsireni = Rozsireni + 0.05
+			End If
+		End If
+		
+		If bod(1) = "P"  Then
+			Z = -1
+			M = 0
+		End If
+		
+		If bod(1) = "L"  Then
+			Z = 1
+			M = 0
+		End If
+		
+		If bod(1) = "R"  Then
+			Z = 0
+			M = 1
+		End If
+		
+		If bod(1) = "LM"  Then
+			Z = bod(4)
+			M = 0
+		End If
+	
+		If bod(1) = "PM"  Then
+			Z = -bod(4)
+			M = 0
+		End If
+		
+		If Strednipas = 0 Then
+			If Krajnice(0) = True Then
+				profilybodu(0) = Array(-(Silnice + Rozsireni + krajnicesirka), 0, (((M * (-prov)) + (-pmax * Z)) / 100 * (Silnice + Rozsireni)) + (-8 / 100 * krajnicesirka))
+				profilybodu(1) = Array((-Silnice - Rozsireni), 0, ((M * (-prov)) + (-pmax * Z)) / 100 * (Silnice + Rozsireni))
+				profilybodu(2) = Array(0, 0, 0)
+				profilybodu(3) = Array(Silnice + Rozsireni, 0, ((M * (-prov)) + (pmax * Z)) / 100 * (Silnice + Rozsireni))
+				profilybodu(4) = Array(Silnice + Rozsireni + krajnicesirka, 0, (((M * (-prov)) + (pmax * Z)) / 100 * (Silnice + Rozsireni)) + (-8 / 100 * krajnicesirka))
+			Else
+				profilybodu(0) = Array((-Silnice + Rozsireni), 0, ((M * (-prov)) + (-pmax * Z)) / 100 * (Silnice + Rozsireni))
+				profilybodu(1) = Array(0, 0, 0)
+				profilybodu(2) = Array(Silnice + Rozsireni, 0, ((M * (-prov)) + (pmax * Z)) / 100 * (Silnice + Rozsireni))
+			End If
+			
+		Else
+			If Krajnice(0) = True Then
+				profilybodu(0) = Array(-(Silnice + Rozsireni + Strednipas / 2 + krajnicesirka), 0, (((M * (-prov)) + (-pmax * Z)) / 100 * ((Silnice + Strednipas / 2) + Rozsireni)) + (-8 / 100 * krajnicesirka))
+				profilybodu(1) = Array(-Silnice - Rozsireni - Strednipas / 2, 0, ((M * (-prov)) + (-pmax * Z)) / 100 * (Silnice + Rozsireni + Strednipas / 2))
+				profilybodu(2) = Array(-Strednipas / 2, 0, 0)
+				profilybodu(3) = Array(+Strednipas / 2, 0, 0)
+				profilybodu(4) = Array(Silnice + Rozsireni + Strednipas / 2, 0, ((M * (-prov)) + (pmax * Z)) / 100 * (Silnice + Rozsireni + Strednipas / 2))
+				profilybodu(5) = Array(Silnice + Rozsireni + Strednipas / 2 + krajnicesirka, 0, (((M * (-prov)) + (pmax * Z)) / 100 * (Silnice + Rozsireni + Strednipas / 2)) + (-8 / 100 * krajnicesirka))
+			Else
+				profilybodu(0) = Array(-Silnice - Rozsireni - Strednipas / 2, 0, ((M * (-prov)) + (-pmax * Z)) / 100 * (Silnice + Rozsireni + Strednipas / 2))
+				profilybodu(1) = Array(-Strednipas / 2, 0, 0)
+				profilybodu(2) = Array(+Strednipas / 2, 0, 0)
+				profilybodu(3) = Array(Silnice + Rozsireni + Strednipas / 2, 0, ((M * (-prov)) + (pmax * Z)) / 100 * (Silnice + Rozsireni + Strednipas / 2))
+			End If
+			
+		End If
+		
+		profily(i) = Rhino.AddPolyline(profilybodu)
+		Rhino.MoveObject profily(i), Array(0, 0, 0), bod(0)
+		Rhino.RotateObject profily(i), bod(0), bod(3) - 90
+		
+		i = i + 1
+	Next
+	
+	Dim silnice3D
+	silnice3D = Rhino.AddSweep1(usek, profily)
+	
+	Rhino.EnableRedraw vbTrue
+	
+	
+End Sub

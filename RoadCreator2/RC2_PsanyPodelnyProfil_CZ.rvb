@@ -1,0 +1,534 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version pátek 12. ledna 2018 13:42:35
+
+Call RC2_PsanyPodelnyProfil_CZ()
+Sub  RC2_PsanyPodelnyProfil_CZ()
+
+	Dim vrstvy,vrstva,vrstvyvyber(),name,part,i,vyber
+	i = 0
+	vrstvy = Rhino.LayerNames
+	For Each vrstva In vrstvy
+		part = Rhino.Strtok(vrstva, "::")
+		If Ubound(part) = 0 Then
+			If part(0) = "Terén" Then
+			ElseIf part(0) = "Default" Then
+			ElseIf part(0) = "Layer 01" Then
+			ElseIf part(0) = "Layer 02" Then
+			ElseIf part(0) = "Layer 03" Then
+			ElseIf part(0) = "Layer 04" Then
+			ElseIf part(0) = "Layer 05" Then
+			ElseIf part(0) = "3D model terénu" Then
+			ElseIf part(0) = "Svahy" Then
+			ElseIf part(0) = "RC_Databaze" Then
+				
+			Else
+				
+				ReDim Preserve vrstvyvyber(i)
+				vrstvyvyber(i) = part(0)
+				i = i + 1
+			End If
+		End If
+	Next
+	
+	If isnull(vyber)Then
+		Rhino.Print("Neexistuje žádný návrh trati")
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	
+	vyber = Rhino.ListBox(vrstvyvyber, "Vyber silnici pro vygenerování psaného podelného profilu", "RailCreator")
+	If isnull(vyber)Then
+		Rhino.Print("Nebyla vybrána železnice trati")
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	Rhino.EnableRedraw vbFalse
+	Rhino.Print"Pracuji"
+	Dim terencurve,niveleta,dulbody,vyskovybody,po,povyber,strpo
+	povyber = Array("5", "10", "20", "50", "100", "200")
+
+	po = Rhino.ListBox(povyber, "Vyber vzdálenost pro editaci staničení", "RailCreator")
+	If isnull(strpo)Then
+		Rhino.Print("Nevybral si vzdálenost")
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	Else
+		po = Cdbl(po)
+	End If
+	
+	part = Rhino.ObjectsByLayer(vyber + "::Podélný profil::Profil terén")
+	If Not isnull(part(0)) Then
+		If Rhino.IsCurve(part(0)) = True Then
+			terencurve = part(0)
+			Rhino.SelectObject terencurve
+		End If
+	Else
+		Rhino.Print "Podélný profil"
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	
+	part = Rhino.Objectsbyname(vyber + " TecnovyPolygon")
+	If Not isnull(part(0)) Then
+		If Rhino.IsCurve(part(0)) = True Then
+			niveleta = part(0)
+		End If
+	Else
+		Rhino.Print "Neexistuje niveleta"
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+
+	Dim length,Startpoint,Endpoint
+	Startpoint = rhino.CurveStartPoint(terencurve)
+	Endpoint = rhino.CurveEndPoint(terencurve)
+	length = Endpoint(0) - Startpoint(0)
+
+
+	Dim srovnavacihladina,vybery,pocatek
+	
+	vybery = Rhino.ObjectsByLayer(vyber + "::Podélný profil")
+	For Each part In vybery
+		If Rhino.IsPoint(part) = True Then
+			name = Rhino.ObjectName(part)
+			If Not isnull(name) Then
+				pocatek = part
+				part = Rhino.Strtok(name, " ")
+				srovnavacihladina = Cdbl(part(2))
+				pocatek = rhino.PointCoordinates(pocatek)
+			End If
+		End If		
+	Next
+	
+	Dim Vpoints,Spoints,Joinpoints
+	vyskovybody = Rhino.ObjectsByLayer(vyber + "::Niveleta::Důležité body")
+	dulbody = Rhino.ObjectsByLayer(vyber + "::Tečnový polygon::Staničení::Staničení body")
+	
+	
+	Dim sloucenybody(),bod,bodyID(),sortval(),PPbody()
+	i = 0
+	ReDim sortval(Ubound(vyskovybody)+Ubound(dulbody)+1)
+	ReDim sloucenybody(Ubound(vyskovybody)+Ubound(dulbody)+1)
+	ReDim bodyID(Ubound(vyskovybody)+Ubound(dulbody)+1)
+	ReDim PPbody(Ubound(vyskovybody)+Ubound(dulbody)+1)
+	
+	For Each bod In dulbody
+		name = Rhino.ObjectName(bod)
+		bodyID(i) = Rhino.Strtok(name, " ")
+		sloucenybody(i) = Array(bod, bodyID(i)(3), Cdbl(bodyID(i)(4)))
+		sortval(i) = Cdbl(bodyID(i)(4))
+		i = i + 1
+	Next
+	Dim souradnicebodu
+	For Each bod In vyskovybody
+		name = Rhino.ObjectName(bod)
+		souradnicebodu = Rhino.PointCoordinates(bod)
+		bodyID(i) = Rhino.Strtok(name, " ")
+		sloucenybody(i) = Array(bod, bodyID(i)(1), souradnicebodu(0) - Startpoint(0))
+		sortval(i) = souradnicebodu(0) - Startpoint(0)
+		i = i + 1
+	Next
+	'sortovani
+	Dim sortbody,p
+	sortbody = Rhino.SortNumbers(sortval, True)
+	
+	i = 0
+	Do While i < ubound(sloucenybody) + 1
+		p = 0
+		Do Until sortbody(i) = sortval(p)
+			p = p + 1
+		Loop
+		PPbody(i) = sloucenybody(p)
+		i = i + 1
+	Loop
+	
+	'Sklon
+	Dim souradnicebodu2,od,sklon,Pbody
+	ReDim Pbody (Ubound(vyskovybody)+Ubound(dulbody)+1)
+	od = 0
+	p = 0
+	souradnicebodu = Rhino.Curvestartpoint(niveleta)
+	Do While p < Ubound(PPbody) + 1
+
+		If PPbody(p)(1) = "ZZ" Or PPbody(p)(1) = "KÚ" Then
+			If PPbody(p)(1) = "KÚ" Then
+				souradnicebodu2 = Rhino.CurveEndpoint(niveleta)
+			Else
+				souradnicebodu2 = Rhino.PointCoordinates(PPbody(p)(0))
+			End If
+			
+
+			sklon = ((souradnicebodu2(1) - souradnicebodu(1)) / 0.1) / (souradnicebodu2(0) - souradnicebodu(0))
+		End If
+		
+		If PPbody(p)(1) = "KZ" Then
+			souradnicebodu = Rhino.PointCoordinates(PPbody(p)(0))
+		End If
+		
+		If PPbody(p)(1) = "V" Or PPbody(p)(1) = "KÚ" Then
+			For i=od To p
+				Pbody(i) = Array(PPbody(i)(0), PPbody(i)(1), PPbody(i)(2), sklon)	
+			Next
+			od = i
+		End If
+		
+		p = p + 1
+	Loop
+
+	
+	'Vypis do excelu
+	Dim Excel, Book, Sheet,sFileName
+	sFileName = Rhino.SaveFileName("Název souboru pro uloení", "Excel Files (*.xls)|*.xls||")
+	' Open Excel object
+	If isnull(sFileName)Then
+		Rhino.Print "Nevybral jste cestu pro uložení"
+		
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	
+	
+	
+	Set excel = CreateObject("excel.application")
+	' You may have to set Visible property to True
+	' if you want to see the application.
+	excel.Visible = True
+	' Use excel to access Microsoft Excel's 
+	' other objects.
+	Set Book = excel.Workbooks.Add
+	Set Sheet = excel.Worksheets(1)
+	
+	'________________________________________________
+	sheet.Range("B2:M2").Merge
+	sheet.Range("B3:H3").Merge
+	sheet.Range("I3:J3").Merge
+	sheet.Range("K3:M3").Merge
+	i = 7
+	Do While i < 11
+		sheet.Range("B2:M2").Borders(i).LineStyle = 1
+		sheet.Range("B4:M4").Borders(i).LineStyle = 1
+		sheet.Range("B3:H3").Borders(i).LineStyle = 1
+		sheet.Range("B4:H5").Borders(i).LineStyle = 1
+		sheet.Range("I3:J3").Borders(i).LineStyle = 1
+		sheet.Range("I4:J5").Borders(i).LineStyle = 1
+		sheet.Range("K3:M3").Borders(i).LineStyle = 1
+		sheet.Range("K4:M5").Borders(i).LineStyle = 1
+		i = i + 1
+	Loop
+
+	
+	sheet.Range("B2:M1000").HorizontalAlignment = -4108
+	sheet.Range("B2:M1000").HorizontalAlignment = -4108
+	sheet.Range("B4:M5").WrapText = True
+	excel.Cells(2, 2).RowHeight = 20
+	'Place titles on sheet
+	excel.Cells(2, 2).Font.Bold = True
+	excel.Cells(2, 2).Font.Size = 15
+	excel.Cells(2, 2).Value = "Psaný podélný profil"
+	
+	excel.Cells(3, 2).Font.Size = 12
+	excel.Cells(3, 2).Value = "Výpočet výškového polygonu"
+
+	excel.Cells(3, 9).Font.Size = 12
+	excel.Cells(3, 9).Value = "Výpočet zaoblení"
+	
+	excel.Cells(3, 11).Font.Size = 12
+	excel.Cells(3, 11).Value = "Výška"
+	
+	excel.Range("D4").RowHeight = 120
+	
+	excel.Cells(4, 2).Orientation = 90
+	excel.Cells(4, 2).Value = "Pořadové číslo bodu"
+	excel.Cells(5, 2).Value = "[-]"
+	
+	excel.Cells(4, 3).Orientation = 90
+	excel.Cells(4, 3).Value = "Staničení"
+	excel.Cells(5, 3).Value = "[km]"
+	
+	excel.Cells(4, 4).Orientation = 90
+	excel.Cells(4, 4).Value = "Označení bodu"
+	excel.Cells(5, 4).Value = "[-]"
+	
+	excel.Cells(4, 5).Orientation = 90
+	excel.Cells(4, 5).Value = "Podélný sklon"
+	excel.Cells(5, 5).Value = "s[%]"
+	
+	excel.Cells(4, 6).Orientation = 90
+	excel.Cells(4, 6).Value = "Vzdálenost od vrcholu výškového polygonu"
+	excel.Cells(5, 6).Value = "[m]"
+	
+	excel.Cells(4, 7).Orientation = 90
+	excel.Cells(4, 7).Value = "Výškový rozdíl"
+	excel.Cells(5, 7).Value = "[m]"
+	
+	excel.Cells(4, 8).Orientation = 90
+	excel.Cells(4, 8).Value = "Kóta výškového polygonu"
+	excel.Cells(5, 8).Value = "[m]"
+	
+	excel.Cells(4, 9).Orientation = 90
+	excel.Cells(4, 9).Value = "Vzdálenost k ZZ, KZ"
+	excel.Cells(5, 9).Value = "x [m]"
+	
+	excel.Cells(4, 10).Orientation = 90
+	excel.Cells(4, 10).Value = "Zaoblení"
+	excel.Cells(5, 10).Value = "y [m]"
+	
+	excel.Cells(4, 11).Orientation = 90
+	excel.Cells(4, 11).Value = "Kóta nivelety"
+	excel.Cells(5, 11).Value = "[m]"
+	
+	excel.Cells(4, 12).Orientation = 90
+	excel.Cells(4, 12).Value = "Kóta terénu"
+	excel.Cells(5, 12).Value = "[m]"
+	
+	excel.Cells(4, 13).Orientation = 90
+	excel.Cells(4, 13).Value = "Výškový rozdíl"
+	excel.Cells(5, 13).Value = "[m]"
+	
+	
+	'HODNOTY___________________________________________________________________________
+	Dim pomline,d,pocitadlo,Vstaniceni,prusecik,vyskaN,vyskaT,pocitej,vzd,zaobleni,vyskaV,vyskaP,startpocitej,zaV,tecna
+
+	
+	i = 1
+	p = 6
+	d = 0
+	Vstaniceni = 0
+	pomline = Rhino.AddLine(Array(pocatek(0) + Cdbl(Pbody(d)(2)), pocatek(1), 0), Array(pocatek(0) + Cdbl(Pbody(d)(2)), pocatek(1) + 100000, 0))
+	prusecik = Rhino.CurveCurveIntersection(pomline, niveleta)
+	vyskaN = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+	excel.Cells(p, 11).Value = Cstr(VyskaN)
+	vyskaV = vyskaN
+	zaV = False
+	Rhino.DeleteObject pomline
+	
+	Do While i * po < length
+		
+
+		'Dulezity bodu
+		Do While i * po > Pbody(d)(2)
+			excel.Cells(p, 2).Value = Cstr(i + d )
+			excel.Cells(p, 3).Value = Cstr (Pbody(d)(2) / 1000)
+			excel.Cells(p, 4).Value = Cstr (Pbody(d)(1))
+			sklon = Pbody(d)(3)
+			excel.Cells(p, 5).Value = sklon
+		
+			'Vysky
+			pomline = Rhino.AddLine(Array(pocatek(0) + Cdbl(Pbody(d)(2)), pocatek(1), 0), Array(pocatek(0) + Cdbl(Pbody(d)(2)), pocatek(1) + 100000, 0))
+			prusecik = Rhino.CurveCurveIntersection(pomline, niveleta)
+			vyskaN = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+		
+		
+			excel.Cells(p, 11).Value = Cstr(VyskaN)
+		
+		
+		
+			vyskaP = VyskaV + ((Cdbl(Pbody(d)(2)) - Vstaniceni) * sklon / 100)
+			excel.Cells(p, 8).Value = vyskaP
+			excel.Cells(p, 7).Value = ((Cdbl(Pbody(d)(2)) - Vstaniceni) * sklon / 100)
+			If Pbody(d)(1) = "V" Then
+				VyskaV = vyskaP
+			End If
+		
+			If Pbody(d)(1) = "V" Then
+				sklon = Pbody(d + 1)(3)
+				Vstaniceni = Cdbl(Pbody(d)(2))
+			End If
+			excel.Cells(p, 6).Value = Cstr(Pbody(d)(2) - Vstaniceni)
+			
+			If Pbody(d)(1) = "ZZ" Then
+				pocitej = True
+				startpocitej = Cdbl(Pbody(d)(2))
+			End If
+			
+	
+			
+			
+			If pocitej = True Then
+				If Pbody(d)(1) = "KZ" Or Pbody(d)(1) = "ZZ" Then
+					excel.Cells(p, 9).Value = 0
+					excel.Cells(p, 10).Value = 0
+				Else
+					If zaV = False Then
+						excel.Cells(p, 9).Value = Pbody(d)(2) - startpocitej
+					Else
+						excel.Cells(p, 9).Value = (tecna + Vstaniceni) - Pbody(d)(2)
+					End If
+					excel.Cells(p, 10).Value = (VyskaN - VyskaP)
+				End If
+				
+				If Pbody(d)(1) = "KZ" Then
+					pocitej = False
+					zaV = False
+				End If
+				
+				If Pbody(d)(1) = "V" Then
+					tecna = Pbody(d)(2) - startpocitej
+					zaV = True
+				End If
+				
+			End If
+			
+			prusecik = Rhino.CurveCurveIntersection(pomline, terencurve)
+			vyskaT = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+			excel.Cells(p, 12).Value = Cstr(VyskaT)
+			excel.Cells(p, 13).Value = Cstr(VyskaN - VyskaT)
+			Rhino.DeleteObject pomline
+			
+			p = p + 1
+			d = d + 1
+		Loop
+		
+		excel.Cells(p, 2).Value = Cstr(i + d)
+		excel.Cells(p, 3).Value = Cstr(i * po / 1000)
+		excel.Cells(p, 5).Value = sklon
+		excel.Cells(p, 6).Value = Cstr(i * po - Vstaniceni)
+		vyskaP = VyskaV + ((i * po - Vstaniceni) * sklon / 100)
+		excel.Cells(p, 8).Value = vyskaP
+		excel.Cells(p, 7).Value = ((Cdbl(i * po) - Vstaniceni) * sklon / 100)
+		
+		pomline = Rhino.AddLine(Array(pocatek(0) + (i * po), pocatek(1), 0), Array(pocatek(0) + (i * po), pocatek(1) + 100000, 0))
+		prusecik = Rhino.CurveCurveIntersection(pomline, niveleta)
+		vyskaN = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+		excel.Cells(p, 11).Value = Cstr(VyskaN)
+		
+		prusecik = Rhino.CurveCurveIntersection(pomline, terencurve)
+		vyskaT = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+		excel.Cells(p, 12).Value = Cstr(VyskaT)
+		excel.Cells(p, 13).Value = Cstr(VyskaN - VyskaT)
+		Rhino.DeleteObject pomline
+		
+		If pocitej = True Then
+			If zaV = False Then
+				excel.Cells(p, 9).Value = (i * po) - startpocitej
+			Else
+				excel.Cells(p, 9).Value = (tecna + Vstaniceni) - (i * po)
+			End If
+			excel.Cells(p, 10).Value = (VyskaN - VyskaP)
+		End If
+		
+		p = p + 1
+		i = i + 1
+		
+		
+	Loop
+	'Vlození posledního bodu
+	excel.Cells(p, 2).Value = Cstr(i + d )
+	excel.Cells(p, 3).Value = Cstr (Pbody(d)(2) / 1000)
+	excel.Cells(p, 4).Value = Cstr (Pbody(d)(1))
+	sklon = Pbody(d)(3)
+	excel.Cells(p, 5).Value = sklon
+		
+	'Vysky
+	pomline = Rhino.AddLine(Array(pocatek(0) + Cdbl(Pbody(d)(2)), pocatek(1), 0), Array(pocatek(0) + Cdbl(Pbody(d)(2)), pocatek(1) + 100000, 0))
+	prusecik = Rhino.CurveCurveIntersection(pomline, niveleta)
+	vyskaN = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+		
+		
+	excel.Cells(p, 11).Value = Cstr(VyskaN)
+		
+		
+		
+	vyskaP = VyskaV + ((Cdbl(Pbody(d)(2)) - Vstaniceni) * sklon / 100)
+	excel.Cells(p, 8).Value = vyskaP
+	excel.Cells(p, 7).Value = ((Cdbl(Pbody(d)(2)) - Vstaniceni) * sklon / 100)
+	If Pbody(d)(1) = "V" Then
+		VyskaV = vyskaP
+	End If
+		
+	If Pbody(d)(1) = "V" Then
+		sklon = Pbody(d + 1)(3)
+		Vstaniceni = Cdbl(Pbody(d)(2))
+	End If
+	excel.Cells(p, 6).Value = Cstr(Pbody(d)(2) - Vstaniceni)
+			
+	If Pbody(d)(1) = "ZZ" Then
+		pocitej = True
+		startpocitej = Cdbl(Pbody(d)(2))
+	End If
+			
+	
+			
+			
+	If pocitej = True Then
+		If Pbody(d)(1) = "KZ" Or Pbody(d)(1) = "ZZ" Then
+			excel.Cells(p, 9).Value = 0
+			excel.Cells(p, 10).Value = 0
+		Else
+			If zaV = False Then
+				excel.Cells(p, 9).Value = Pbody(d)(2) - startpocitej
+			Else
+				excel.Cells(p, 9).Value = (tecna + Vstaniceni) - Pbody(d)(2)
+			End If
+			excel.Cells(p, 10).Value = (VyskaN - VyskaP)
+		End If
+				
+		If Pbody(d)(1) = "KZ" Then
+			pocitej = False
+			zaV = False
+		End If
+				
+		If Pbody(d)(1) = "V" Then
+			tecna = Pbody(d)(2) - startpocitej
+			zaV = True
+		End If
+				
+	End If
+			
+	prusecik = Rhino.CurveCurveIntersection(pomline, terencurve)
+	vyskaT = srovnavacihladina + ((prusecik(0, 1)(1) - pocatek(1)) / 10)
+	excel.Cells(p, 12).Value = Cstr(VyskaT)
+	excel.Cells(p, 13).Value = Cstr(VyskaN - VyskaT)
+	Rhino.DeleteObject pomline
+	
+	
+	'Tvorba ohraniceni
+	Dim imax,text
+	imax = p - 6
+	i = 10
+	
+	text = "B6:H" + Cstr(6 + imax)
+
+	sheet.Range(text).Borders(7).LineStyle = 1
+	sheet.Range(text).Borders(10).LineStyle = 1
+	
+	text = "K6:M" + Cstr(6 + imax)
+
+	sheet.Range(text).Borders(7).LineStyle = 1
+	sheet.Range(text).Borders(10).LineStyle = 1
+	
+	Do While i < imax 
+		text = "B" + Cstr(5 + i) + ":M" + Cstr(5 + i)
+		sheet.Range(text).Borders(9).LineStyle = 1	
+		i = i + 10
+	Loop
+	
+	text = "B6:M" + Cstr(6 + imax)
+	sheet.Range(text).Borders(9).LineStyle = 1	
+	
+	'fORMAT BODU
+	text = "C6:C" + Cstr(6 + imax)
+	sheet.Range(text).NumberFormat = "0.000000"
+	sheet.Range(text).ColumnWidth = 10
+	
+	
+	text = "E6:E" + Cstr(6 + imax)
+	sheet.Range(text).NumberFormat = "0.000"
+	
+	text = "F6:M" + Cstr(6 + imax)
+	sheet.Range(text).NumberFormat = "0.00"
+	
+	excel.activeworkbook.SaveAs(sFileName)
+	Excel.Quit
+
+	Set Sheet = Nothing
+	Set Excel = Nothing 
+	
+	Rhino.EnableRedraw vbTrue
+	Rhino.UnselectAllObjects
+	Rhino.Print"Byl vytvořen psaný podélný profil:" + sFileName
+
+	
+End Sub

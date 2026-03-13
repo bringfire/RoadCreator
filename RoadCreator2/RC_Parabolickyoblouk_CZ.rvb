@@ -1,0 +1,205 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version 29. března 2016 14:41:08
+
+Function Split(brep, cutter)
+	
+	Dim saved, cmd
+	split = Null
+	saved = Rhino.SelectedObjects
+	Rhino.UnSelectAllObjects
+	Rhino.SelectObject brep
+	cmd = "_Split _SelID " & cutter & " _Enter"
+	Rhino.Command cmd, 0
+	split = Rhino.LastCreatedObjects
+	Rhino.UnSelectAllObjects
+	If IsArray(saved) Then Rhino.SelectObjects(saved)
+End Function
+
+Call RC_Parabolickyoblouk_CZ()
+Sub RC_Parabolickyoblouk_CZ()
+	
+	Dim version,ts
+	version = Rhino.ExeVersion
+	ts = 1
+	If version = 6 Then
+		ts = 1000
+	End If
+	
+	Dim tec1,tec2,R,tec1dlouha,name,part
+	tec1 = Rhino.GetObject("Vyber první část křivky pro vložení parablického oblouku", 4)
+	If IsNull(tec1) Then
+		Rhino.Print "Nevybral jste první část "
+		Exit Sub
+	End If
+	name = Rhino.ObjectName(tec1)
+	part = Rhino.Strtok(name, " ")
+	
+	tec2 = Rhino.GetObject("Vyber druhou část křivky pro vložení parablického oblouku", 4)
+	If IsNull(tec2) Then
+		Rhino.Print "Nevybral jste druhou část tečnového polygonu"
+		Exit Sub
+	End If
+	R = Rhino.GetReal("Zadej poloměr oblouk:", 2000)	
+	If IsNull(R) Then
+		Rhino.Print "Nezadal jste poloměr"
+		Exit Sub
+	End If
+	Rhino.EnableRedraw vbFalse
+	
+	Dim vrchol,Startpoint,Endpoint,prusecik
+	prusecik = Rhino.CurveCurveIntersection(tec1, tec2)
+	If isnull(prusecik) Then
+		Rhino.Print"Krivky nemají průsečík"
+		Exit Sub
+	Else
+		vrchol = prusecik(0, 1)
+	End If
+	
+	Rhino.CurrentLayer(part(0) + "::Niveleta")
+
+
+	Rhino.EnableRedraw vbFalse
+	Dim kruznice
+	kruznice = Rhino.addcircle(vrchol, 1)
+	prusecik = Rhino.CurveCurveIntersection(kruznice, tec1)
+	Startpoint = prusecik(0, 1)
+	prusecik = Rhino.CurveCurveIntersection(kruznice, tec2)
+	Endpoint = prusecik(0, 1)
+	Rhino.DeleteObject kruznice
+	
+
+	
+	Dim delka(1),vyska(1),sklon(1),t,i
+	delka(0) = vrchol(0) - startpoint(0)
+	vyska(0) = (vrchol(1) - startpoint(1)) / 10
+	sklon(0) = (vyska(0) / delka(0)) * 100
+
+	delka(1) = endpoint(0) - vrchol(0)
+	vyska(1) = (endpoint(1) - vrchol(1)) / 10
+	sklon(1) = (vyska(1) / delka(1)) * 100
+	
+	t = R / 200 * (sklon(0) - sklon(1))
+	If t < 0 Then
+		t = t * (-1)
+	End If
+	'Urceni zacatku a konce
+	i = 1
+	Do While i < (2 * t)
+		i = i + 1
+	Loop
+	Dim body()
+	
+	ReDim body ((i))
+	
+	Dim pomkrivka,rozdel(1)
+	pomkrivka = Rhino.AddLine(Array(0, -1000, 0), Array(0, 1000, 0))
+	Rhino.MoveObject pomkrivka, Array(0, 0, 0), Array(vrchol(0) - t, vrchol(1), 0)
+	prusecik = Rhino.CurveCurveIntersection(tec1, pomkrivka)
+	If isnull(prusecik) Then
+		Rhino.Print"První tečna je příliš krátká"
+		If Rhino.IsLayer("Default") Then
+			Rhino.CurrentLayer("Default")
+		Else 
+			Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+			Rhino.CurrentLayer("Default")
+		End If
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	rozdel(1) = split(tec1, pomkrivka)
+	body(0) = prusecik(0, 1)
+
+	Rhino.MoveObject pomkrivka, Array(vrchol(0) - t, vrchol(1), 0), Array(vrchol(0) + t, vrchol(1), 0)
+	prusecik = Rhino.CurveCurveIntersection(tec2, pomkrivka)
+	If isnull(prusecik) Then
+		Rhino.Print"Druhá tečna je příliš krátká"
+		If Rhino.IsLayer("Default") Then
+			Rhino.CurrentLayer("Default")
+		Else 
+			Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+			Rhino.CurrentLayer("Default")
+		End If
+		Rhino.EnableRedraw vbTrue
+		Exit Sub
+	End If
+	Rhino.CurrentLayer(part(0) + "::Niveleta")
+	Rhino.AddLine Array(body(0)(0), body(0)(1), 0), Array(body(0)(0), body(0)(1) + 80, 0)
+	Rhino.AddCircle body(0), 1
+	rozdel(0) = split(tec2, pomkrivka)
+	Rhino.AddCircle prusecik(0, 1), 1
+	body(Ubound(body)) = prusecik(0, 1)
+	Rhino.AddLine Array(body(Ubound(body))(0), body(Ubound(body))(1), 0), Array(body(Ubound(body))(0), body(Ubound(body))(1) + 80, 0)
+	
+	tec1dlouha = Rhino.addline(body(0), vrchol)
+	Rhino.ScaleObject tec1dlouha, Rhino.CurveMidPoint(tec1dlouha), array(4, 4, 0)
+	
+	'Vytycovaci prvky
+	Dim ymax,operator,y,point
+	ymax = (t * t) / (2 * R)
+	If sklon(0) < sklon(1) Then
+		operator = 1
+	Else
+		operator = -1
+	End If
+	Rhino.MoveObject pomkrivka, Array(vrchol(0) + t, vrchol(1), 0), Array(vrchol(0) - t + 1, vrchol(1), 0)
+	i = 1
+	Do While i < (2 * t)
+		y = (i * i) / (2 * R)
+		prusecik = Rhino.CurveCurveIntersection(tec1dlouha, pomkrivka)
+		If isnull(prusecik) Then
+			prusecik = Rhino.CurveCurveIntersection(tec1dlouha, pomkrivka)
+		End If
+		point = prusecik(0, 1)
+		body(i) = Array(point(0), point(1) + (y * operator) * 10, 0)
+		i = i + 1
+		Rhino.MoveObject pomkrivka, array(0, 0, 0), Array(1, 0, 0)
+	Loop
+	Dim oblouk
+	oblouk = Rhino.AddInterpCurve(body)
+	Rhino.DeleteObject tec1dlouha
+	Rhino.DeleteObject pomkrivka
+	
+	'Vypisovani
+	Dim text,join
+	kruznice = Rhino.AddCircle(Array(vrchol(0), vrchol(1) + 80, 0), 3)
+	text = Rhino.AddText("R = " & CStr(R) & " m", Array(vrchol(0) - 10, vrchol(1) + 100, 0), 3 / ts)
+	t = ((t * 100) \ 1) / 100
+	text = Rhino.AddText("t = " & CStr(t) & " m", Array(vrchol(0) - 10, vrchol(1) + 96, 0), 3 / ts)
+	ymax = operator * ((ymax * 100) \ 1) / 100
+	text = Rhino.AddText("Ymax = " & CStr(ymax) & " m", Array(vrchol(0) - 10, vrchol(1) + 92, 0), 3/ts)
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+		
+	Rhino.EnableRedraw vbTrue
+	join = Rhino.joincurves(Array(Oblouk, rozdel(0)(1), Rozdel(1)(0)), True)
+	rhino.ObjectName join, name
+	join = Rhino.joincurves(Array(rozdel(0)(0), Rozdel(1)(1)), True)
+	rhino.ObjectName join, " "
+	'Vkladani dulezitych bodu
+	Dim dulbody(2)
+	
+	dulbody(0) = Rhino.AddPoint(body(0))
+	Rhino.ObjectName dulbody(0), "ParabolickýOblouk ZZ " + Cstr(R)
+	dulbody(2) = Rhino.AddPoint(body(Ubound(body)))
+	Rhino.ObjectName dulbody(2), "ParabolickýOblouk KZ " + Cstr(R)
+	dulbody(1) = Rhino.AddPoint(vrchol)
+	Rhino.ObjectName dulbody(1), "ParabolickýOblouk V " + Cstr(R)
+	
+	If Rhino.IsLayer(part(0) + "::Niveleta::Důležité body") Then
+		Rhino.Objectlayer dulbody, part(0) + "::Niveleta::Důležité body"
+	Else 
+		Rhino.AddLayer part(0) + "::Niveleta::Důležité body", RGB(150, 150, 150)
+		Rhino.Objectlayer dulbody, part(0) + "::Niveleta::Důležité body"
+	End If
+	Rhino.LayerLocked  part(0) + "::Niveleta::Důležité body", True
+	
+	Rhino.Print "Byl vytvořen parabolický oblouk o poloměru " & CStr(R)
+	
+End Sub

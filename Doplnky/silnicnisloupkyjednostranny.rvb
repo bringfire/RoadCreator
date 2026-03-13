@@ -1,0 +1,212 @@
+Option Explicit
+'Script written by <Adam Orlicky>
+'Script copyrighted by <insert company name>
+'Script version 20. března 2016 15:13:47
+
+Call silnicnisloupkyjednostranny()
+Function Closestpoint(curve, point)
+	Dim  t
+	t = Rhino.CurveClosestPoint(curve, point)
+	If Not IsNull(t) Then
+		Closestpoint = Rhino.EvaluateCurve(curve, t)
+	End If
+End Function
+
+Function Curvepointnormalangle(curve, point)
+	Dim Kruznice, Kruzniceplocha, Pomline, prunik, uhel
+	Kruznice = Rhino.AddCircle(point, 0.1)
+	Pomline = Rhino.AddLine(Array(0, 0, 0), Array(0, 0, 10))
+	Kruzniceplocha = Rhino.ExtrudeCurve(Kruznice, Pomline)
+	Rhino.MoveObject Kruzniceplocha, Array(0, 0, 0), Array(0, 0, -5)
+	prunik = Rhino.CurveSurfaceIntersection(curve, Kruzniceplocha)
+	uhel = Rhino.Angle(Array(point(0), point(1), 0), Array(prunik(0, 1)(0), prunik(0, 1)(1), 0))
+	Curvepointnormalangle = uhel(0)
+	Rhino.DeleteObject(Kruznice)
+	Rhino.DeleteObject(Pomline)
+	Rhino.DeleteObject(Kruzniceplocha)
+End Function
+
+Function Vlozenisloupku(point, uhel)
+	If Rhino.IsLayer("DATABAZE") Then
+		Rhino.LayerLocked "DATABAZE", False
+		Rhino.LayerVisible "DATABAZE", True
+		If Rhino.IsLayer("Silnicnisloupky") Then
+			Rhino.CurrentLayer("Silnicnisloupky")
+		Else 
+			Rhino.AddLayer "Silnicnisloupky", RGB(0, 0, 0)
+			Rhino.CurrentLayer("Silnicnisloupky")
+		End If
+		Dim sloupek,copy
+		sloupek = Rhino.ObjectsByName("Silnicnisloupek(RoadCreator)")
+
+		If IsNull(sloupek) Then
+			Rhino.MessageBox "Pro vložení sloupku, vytvořte vrstvu DATABAZE a v této vrstvě vytvořte 3D sloupek a pojmenujte ho: ,,Silnicnisloupek(RoadCreator)'' a vložte ho na souřadnice(-1,0,0)"
+			Rhino.EnableRedraw vbTrue
+			Vlozenisloupku = 1
+		Else
+			copy = Rhino.Copyobjects(sloupek, Array(-1, 0, 0), point)
+			Rhino.ObjectLayer copy, "Silnicnisloupky"
+			Rhino.ObjectName copy, "Silnicnisloupek"
+			Rhino.RotateObjects copy, point, uhel + 90
+	
+	
+		End If
+	
+	Else
+		Vlozenisloupku = 1
+		Rhino.Print" Databaze nebyla nalezena"
+		Rhino.MessageBox "Pro vložení sloupku, vytvořte vrstvu DATABAZE a v této vrstvě vytvořte 3D sloupek a pojmenujte ho: ,,Silnicnisloupek(RoadCreator)'' a vložte ho na souřadnice(-1,0,0)"
+	End If
+	Rhino.LayerLocked "DATABAZE", True
+	Rhino.LayerVisible "DATABAZE", False
+	
+End Function
+Sub silnicnisloupkyjednostranny()
+	Dim curve,curvepoints,i,ilength,sloupky,direction
+	
+	curve = Rhino.GetObject("Vyber  hranu podél které se budou vytvářet silniční sloupky", 4)
+	If IsNull(curve) Then
+		Rhino.Print("Nevybral jste hranu")
+		Exit Sub	
+	End If
+	
+	direction = Rhino.GetPoint("Urci osu silnice")
+	If isNull(Direction)Then
+		Rhino.Print("Nevybral si osu silnice")
+		Exit Sub
+	End If
+
+	
+
+	
+	curvepoints = Rhino.DivideCurveEquidistant(curve, 5)
+	
+	ilength = Ubound(curvepoints)
+	i = 0
+	Dim angle,polomer,rozdil,beta(1),lastadd,curvepoint2,protipoint,pomline,Strana,distance(1)
+	lastadd = 0
+	Rhino.EnableRedraw vbFalse
+	Rhino.Print "Pracuji"
+	Do While i =< ilength
+
+		If i = 0 Or i = ilength Then
+			polomer = 10000
+			'Zjisteni prava leva
+			protipoint = Closestpoint(curve, direction)
+			rozdil = Curvepointnormalangle(curve, protipoint)
+			pomline = Rhino.Addline(Array(0, 0, 0), Array(0, 1, 0))
+			Rhino.MoveObject pomline, Array(0, 0, 0), protipoint
+			Rhino.RotateObject pomline, protipoint, rozdil
+			Distance(0) = Rhino.Distance(direction, Rhino.CurveEndPoint(pomline))
+			Rhino.RotateObject pomline, protipoint, 180
+			Distance(1) = Rhino.Distance(direction, Rhino.CurveEndPoint(pomline))
+			Rhino.DeleteObject pomline
+			If Distance(1) > Distance(0) Then
+				Strana = 0
+			Else
+				Strana = 180
+			End If
+			
+			angle = Curvepointnormalangle(curve, curvepoints(i))
+			sloupky = Vlozenisloupku(curvepoints(i), angle + Strana)
+			If sloupky = 1 Then
+				Rhino.Print "Nastala chyba při vkládání sloupků"
+				Exit Sub
+			End If
+		Else
+			beta(0) = Rhino.Angle(Array(curvepoints(i - 1)(0), curvepoints(i - 1)(1), 0), Array(curvepoints(i)(0), curvepoints(i)(1), 0))
+			beta(1) = Rhino.Angle(Array(curvepoints(i)(0), curvepoints(i)(1), 0), Array(curvepoints(i + 1)(0), curvepoints(i + 1)(1), 0))
+			rozdil = beta(0)(0) - beta(1)(0)
+			If rozdil < 0 Then
+				rozdil = rozdil * (-1)
+			End If
+			
+			If rozdil > 0.0001  Then
+				polomer = 10 / Rhino.ToRadians(rozdil) / 2
+			Else
+				polomer = 10000
+			End If
+		End If
+		
+	
+		If polomer > 1250 Then
+			If i - lastadd >= 10 Then
+				angle = Curvepointnormalangle(curve, curvepoints(i))
+				sloupky = Vlozenisloupku(curvepoints(i), angle)
+				If sloupky = 1 Then
+					Rhino.Print "Nastala chyba při vkládání sloupků"
+					Exit Sub
+				End If
+				lastadd = i
+			End If
+		Else
+			If polomer > 850 Then
+				If i - lastadd >= 8 Then
+					angle = Curvepointnormalangle(curve, curvepoints(i))
+					sloupky = Vlozenisloupku(curvepoints(i), angle + Strana)
+					If sloupky = 1 Then
+						Rhino.Print "Nastala chyba při vkládání sloupků"
+						Exit Sub
+					End If
+					lastadd = i
+				End If
+			Else
+				If polomer > 450 Then
+					If i - lastadd >= 6 Then
+						angle = Curvepointnormalangle(curve, curvepoints(i))
+						sloupky = Vlozenisloupku(curvepoints(i), angle + Strana)
+						If sloupky = 1 Then
+							Rhino.Print "Nastala chyba při vkládání sloupků"
+							Exit Sub
+						End If
+						lastadd = i
+					End If
+				Else
+					If polomer > 250 Then
+						If i - lastadd >= 4 Then
+							angle = Curvepointnormalangle(curve, curvepoints(i))
+							sloupky = Vlozenisloupku(curvepoints(i), angle + Strana)
+							If sloupky = 1 Then
+								Rhino.Print "Nastala chyba při vkládání sloupků"
+								Exit Sub
+							End If
+							lastadd = i
+						End If
+					Else
+						If polomer > 50 Then
+							If i - lastadd >= 2 Then
+								angle = Curvepointnormalangle(curve, curvepoints(i))
+								sloupky = Vlozenisloupku(curvepoints(i), angle + Strana)
+								If sloupky = 1 Then
+									Rhino.Print "Nastala chyba při vkládání sloupků"
+									Exit Sub
+								End If
+								lastadd = i
+							End If
+						Else
+							If i - lastadd >= 1 Then
+								angle = Curvepointnormalangle(curve, curvepoints(i))
+								sloupky = Vlozenisloupku(curvepoints(i), angle + Strana)
+								If sloupky = 1 Then
+									Rhino.Print "Nastala chyba při vkládání sloupků"
+									Exit Sub
+								End If
+								lastadd = i
+							End If
+						End If
+					End If
+				End If
+			End If
+		End If
+		i = i + 1
+	Loop
+	
+	If Rhino.IsLayer("Default") Then
+		Rhino.CurrentLayer("Default")
+	Else 
+		Rhino.Print "New layer: " & Rhino.AddLayer("Default", RGB(0, 0, 0))
+		Rhino.CurrentLayer("Default")
+	End If
+	Rhino.EnableRedraw vbTrue
+	Rhino.Print"Byly vloženy silniční sloupky"
+End Sub
