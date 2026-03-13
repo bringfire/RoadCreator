@@ -3997,10 +3997,19 @@ public sealed class IntersectionRealizer
         var maxRadius = request.AnalysisGeometry2D.CurbReturnArcs.Count == 0
             ? 0.0
             : request.AnalysisGeometry2D.CurbReturnArcs.Max(static arc => arc.Radius);
+        var outerEnvelope = sourceRoad.EffectiveOuterEnvelopeOffset;
+        var carriageway = sourceRoad.EffectiveCarriagewaySurfaceOffset;
+
+        // Keep pre-union arm patches local to the crossing so the region-union
+        // boundary is driven by the immediate mouth geometry instead of long arm tails.
         var baseLength = Math.Max(
-            sourceRoad.EffectiveCarriagewaySurfaceOffset * 6.0,
-            Math.Max(diagonal * 1.25, maxRadius * 3.0));
-        return Math.Clamp(baseLength, 12.0, 80.0);
+            outerEnvelope > 0.0
+                ? outerEnvelope * sourceRoad.EffectiveArmLengthOuterEnvelopeMultiplier
+                : carriageway * sourceRoad.EffectiveArmLengthCarriagewayMultiplier,
+            Math.Max(
+                diagonal * sourceRoad.EffectiveArmLengthDiagonalMultiplier,
+                maxRadius * sourceRoad.EffectiveArmLengthRadiusMultiplier));
+        return Math.Clamp(baseLength, sourceRoad.EffectiveArmLengthMin, sourceRoad.EffectiveArmLengthMax);
     }
 
     private static double ComputeBoundaryDiagonal(IReadOnlyList<IntersectionPoint3> points)

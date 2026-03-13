@@ -45,6 +45,7 @@ public sealed class RoadProfileDefinition
     public Dictionary<string, string> LayerMap { get; init; } = new();
     public List<string> Tags { get; init; } = new();
     public RoadProfileCrossSectionDefaults? CrossSectionDefaults { get; init; }
+    public RoadProfileIntersectionDefaults? IntersectionDefaults { get; init; }
 
     public IEnumerable<RoadProfileFeatureDefinition> OrderedFeatures =>
         Features.OrderBy(feature => feature.Order).ThenBy(feature => feature.Id, StringComparer.Ordinal);
@@ -92,6 +93,16 @@ public sealed class RoadProfileCrossSectionDefaults
     public double? CrossfallCurve { get; init; }
     public bool? IncludeVerge { get; init; }
     public double? VergeWidth { get; init; }
+}
+
+public sealed class RoadProfileIntersectionDefaults
+{
+    public double? ArmLengthOuterEnvelopeMultiplier { get; init; }
+    public double? ArmLengthCarriagewayMultiplier { get; init; }
+    public double? ArmLengthDiagonalMultiplier { get; init; }
+    public double? ArmLengthRadiusMultiplier { get; init; }
+    public double? ArmLengthMin { get; init; }
+    public double? ArmLengthMax { get; init; }
 }
 
 public sealed class RoadProfileSummary

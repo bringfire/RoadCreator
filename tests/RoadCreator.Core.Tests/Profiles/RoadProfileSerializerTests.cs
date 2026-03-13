@@ -179,6 +179,45 @@ public class RoadProfileSerializerTests
     }
 
     [Fact]
+    public void Serialize_RoundTripsIntersectionArmLengthDefaults()
+    {
+        var source = RoadProfileSerializer.Deserialize(ArterialWithBikeLanesJson)!;
+        var profile = new RoadProfileDefinition
+        {
+            Schema = source.Schema,
+            Name = source.Name,
+            Version = source.Version,
+            Units = source.Units,
+            Description = source.Description,
+            Symmetric = source.Symmetric,
+            TotalWidth = source.TotalWidth,
+            Source = source.Source,
+            Features = source.Features,
+            LayerMap = source.LayerMap,
+            Tags = source.Tags,
+            CrossSectionDefaults = source.CrossSectionDefaults,
+            IntersectionDefaults = new RoadProfileIntersectionDefaults
+            {
+                ArmLengthOuterEnvelopeMultiplier = 2.25,
+                ArmLengthCarriagewayMultiplier = 3.5,
+                ArmLengthDiagonalMultiplier = 0.72,
+                ArmLengthRadiusMultiplier = 2.4,
+                ArmLengthMin = 10.0,
+                ArmLengthMax = 48.0,
+            }
+        };
+
+        var json = RoadProfileSerializer.Serialize(profile);
+        var restored = RoadProfileSerializer.Deserialize(json);
+
+        Assert.NotNull(restored);
+        Assert.NotNull(restored!.IntersectionDefaults);
+        Assert.Equal(2.25, restored.IntersectionDefaults!.ArmLengthOuterEnvelopeMultiplier!.Value, 10);
+        Assert.Equal(48.0, restored.IntersectionDefaults!.ArmLengthMax!.Value, 10);
+        Assert.Contains("\"intersectionDefaults\"", json);
+    }
+
+    [Fact]
     public void Deserialize_ReturnsNull_ForInvalidSchema()
     {
         var result = RoadProfileSerializer.Deserialize(
@@ -229,6 +268,47 @@ public class RoadProfileSerializerTests
             RoadProfileBoundaryRoles.CurbReturnDriver,
             restored.Features[0].BoundaryRoles);
         Assert.False(restored.Features[1].Bilateral);
+    }
+
+    [Fact]
+    public void CompactSerializer_RoundTripsIntersectionArmLengthDefaults()
+    {
+        var source = RoadProfileSerializer.Deserialize(CollectorOneSideBikeJson)!;
+        var profile = new RoadProfileDefinition
+        {
+            Schema = source.Schema,
+            Name = source.Name,
+            Version = source.Version,
+            Units = source.Units,
+            Description = source.Description,
+            Symmetric = source.Symmetric,
+            TotalWidth = source.TotalWidth,
+            Source = source.Source,
+            Features = source.Features,
+            LayerMap = source.LayerMap,
+            Tags = source.Tags,
+            CrossSectionDefaults = source.CrossSectionDefaults,
+            IntersectionDefaults = new RoadProfileIntersectionDefaults
+            {
+                ArmLengthOuterEnvelopeMultiplier = 2.25,
+                ArmLengthCarriagewayMultiplier = 3.5,
+                ArmLengthDiagonalMultiplier = 0.72,
+                ArmLengthRadiusMultiplier = 2.4,
+                ArmLengthMin = 10.0,
+                ArmLengthMax = 48.0,
+            }
+        };
+
+        var json = RoadProfileCompactSerializer.Serialize(profile);
+        var restored = RoadProfileCompactSerializer.Deserialize(json);
+
+        Assert.NotNull(restored);
+        Assert.NotNull(restored!.IntersectionDefaults);
+        Assert.Equal(0.72, restored.IntersectionDefaults!.ArmLengthDiagonalMultiplier!.Value, 10);
+        Assert.Equal(10.0, restored.IntersectionDefaults!.ArmLengthMin!.Value, 10);
+        Assert.Contains("\"ix\":{", json);
+        Assert.Contains("\"ao\":2.25", json);
+        Assert.Contains("\"mx\":48", json);
     }
 
     [Fact]

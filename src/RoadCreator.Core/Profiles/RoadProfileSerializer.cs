@@ -76,6 +76,9 @@ public static class RoadProfileSerializer
         [JsonPropertyName("crossSectionDefaults")]
         public CrossSectionDefaultsDto? CrossSectionDefaults { get; set; }
 
+        [JsonPropertyName("intersectionDefaults")]
+        public IntersectionDefaultsDto? IntersectionDefaults { get; set; }
+
         public static ProfileDto From(RoadProfileDefinition profile) => new()
         {
             Schema = profile.Schema,
@@ -90,6 +93,7 @@ public static class RoadProfileSerializer
             LayerMap = new Dictionary<string, string>(profile.LayerMap, StringComparer.Ordinal),
             Tags = profile.Tags.ToList(),
             CrossSectionDefaults = CrossSectionDefaultsDto.From(profile.CrossSectionDefaults),
+            IntersectionDefaults = IntersectionDefaultsDto.From(profile.IntersectionDefaults),
         };
 
         public RoadProfileDefinition ToProfile()
@@ -143,6 +147,7 @@ public static class RoadProfileSerializer
                 LayerMap = new Dictionary<string, string>(LayerMap, StringComparer.Ordinal),
                 Tags = Tags.Where(tag => !string.IsNullOrWhiteSpace(tag)).ToList(),
                 CrossSectionDefaults = CrossSectionDefaults?.ToModel(),
+                IntersectionDefaults = IntersectionDefaults?.ToModel(),
             };
         }
 
@@ -310,6 +315,53 @@ public static class RoadProfileSerializer
             CrossfallCurve = CrossfallCurve,
             IncludeVerge = IncludeVerge,
             VergeWidth = VergeWidth,
+        };
+    }
+
+    private sealed class IntersectionDefaultsDto
+    {
+        [JsonPropertyName("armLengthOuterEnvelopeMultiplier")]
+        public double? ArmLengthOuterEnvelopeMultiplier { get; set; }
+
+        [JsonPropertyName("armLengthCarriagewayMultiplier")]
+        public double? ArmLengthCarriagewayMultiplier { get; set; }
+
+        [JsonPropertyName("armLengthDiagonalMultiplier")]
+        public double? ArmLengthDiagonalMultiplier { get; set; }
+
+        [JsonPropertyName("armLengthRadiusMultiplier")]
+        public double? ArmLengthRadiusMultiplier { get; set; }
+
+        [JsonPropertyName("armLengthMin")]
+        public double? ArmLengthMin { get; set; }
+
+        [JsonPropertyName("armLengthMax")]
+        public double? ArmLengthMax { get; set; }
+
+        public static IntersectionDefaultsDto? From(RoadProfileIntersectionDefaults? defaults)
+        {
+            if (defaults == null)
+                return null;
+
+            return new IntersectionDefaultsDto
+            {
+                ArmLengthOuterEnvelopeMultiplier = defaults.ArmLengthOuterEnvelopeMultiplier,
+                ArmLengthCarriagewayMultiplier = defaults.ArmLengthCarriagewayMultiplier,
+                ArmLengthDiagonalMultiplier = defaults.ArmLengthDiagonalMultiplier,
+                ArmLengthRadiusMultiplier = defaults.ArmLengthRadiusMultiplier,
+                ArmLengthMin = defaults.ArmLengthMin,
+                ArmLengthMax = defaults.ArmLengthMax,
+            };
+        }
+
+        public RoadProfileIntersectionDefaults ToModel() => new()
+        {
+            ArmLengthOuterEnvelopeMultiplier = ArmLengthOuterEnvelopeMultiplier,
+            ArmLengthCarriagewayMultiplier = ArmLengthCarriagewayMultiplier,
+            ArmLengthDiagonalMultiplier = ArmLengthDiagonalMultiplier,
+            ArmLengthRadiusMultiplier = ArmLengthRadiusMultiplier,
+            ArmLengthMin = ArmLengthMin,
+            ArmLengthMax = ArmLengthMax,
         };
     }
 }

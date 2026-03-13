@@ -100,6 +100,25 @@ public static class RoadProfileCompactSerializer
                 writer.WriteEndObject();
             }
 
+            if (profile.IntersectionDefaults != null)
+            {
+                writer.WritePropertyName("ix");
+                writer.WriteStartObject();
+                if (profile.IntersectionDefaults.ArmLengthOuterEnvelopeMultiplier.HasValue)
+                    writer.WriteNumber("ao", profile.IntersectionDefaults.ArmLengthOuterEnvelopeMultiplier.Value);
+                if (profile.IntersectionDefaults.ArmLengthCarriagewayMultiplier.HasValue)
+                    writer.WriteNumber("ac", profile.IntersectionDefaults.ArmLengthCarriagewayMultiplier.Value);
+                if (profile.IntersectionDefaults.ArmLengthDiagonalMultiplier.HasValue)
+                    writer.WriteNumber("ad", profile.IntersectionDefaults.ArmLengthDiagonalMultiplier.Value);
+                if (profile.IntersectionDefaults.ArmLengthRadiusMultiplier.HasValue)
+                    writer.WriteNumber("ar", profile.IntersectionDefaults.ArmLengthRadiusMultiplier.Value);
+                if (profile.IntersectionDefaults.ArmLengthMin.HasValue)
+                    writer.WriteNumber("mn", profile.IntersectionDefaults.ArmLengthMin.Value);
+                if (profile.IntersectionDefaults.ArmLengthMax.HasValue)
+                    writer.WriteNumber("mx", profile.IntersectionDefaults.ArmLengthMax.Value);
+                writer.WriteEndObject();
+            }
+
             writer.WriteEndObject();
         }
 
@@ -181,6 +200,7 @@ public static class RoadProfileCompactSerializer
                 Tags = ReadTags(root),
                 Source = ReadSource(root),
                 CrossSectionDefaults = ReadCrossSectionDefaults(root),
+                IntersectionDefaults = ReadIntersectionDefaults(root),
             };
         }
         catch (JsonException)
@@ -278,6 +298,22 @@ public static class RoadProfileCompactSerializer
             VergeWidth = defaultsElement.TryGetProperty("vw", out var vergeWidthElement)
                 ? vergeWidthElement.GetDouble()
                 : null,
+        };
+    }
+
+    private static RoadProfileIntersectionDefaults? ReadIntersectionDefaults(JsonElement root)
+    {
+        if (!root.TryGetProperty("ix", out var defaultsElement) || defaultsElement.ValueKind != JsonValueKind.Object)
+            return null;
+
+        return new RoadProfileIntersectionDefaults
+        {
+            ArmLengthOuterEnvelopeMultiplier = defaultsElement.TryGetProperty("ao", out var ao) ? ao.GetDouble() : null,
+            ArmLengthCarriagewayMultiplier = defaultsElement.TryGetProperty("ac", out var ac) ? ac.GetDouble() : null,
+            ArmLengthDiagonalMultiplier = defaultsElement.TryGetProperty("ad", out var ad) ? ad.GetDouble() : null,
+            ArmLengthRadiusMultiplier = defaultsElement.TryGetProperty("ar", out var ar) ? ar.GetDouble() : null,
+            ArmLengthMin = defaultsElement.TryGetProperty("mn", out var mn) ? mn.GetDouble() : null,
+            ArmLengthMax = defaultsElement.TryGetProperty("mx", out var mx) ? mx.GetDouble() : null,
         };
     }
 }

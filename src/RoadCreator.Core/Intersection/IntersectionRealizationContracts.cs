@@ -116,6 +116,24 @@ public sealed class IntersectionSourceRoad
     [JsonPropertyName("outerEnvelopeOffset")]
     public double OuterEnvelopeOffset { get; set; }
 
+    [JsonPropertyName("armLengthOuterEnvelopeMultiplier")]
+    public double ArmLengthOuterEnvelopeMultiplier { get; set; }
+
+    [JsonPropertyName("armLengthCarriagewayMultiplier")]
+    public double ArmLengthCarriagewayMultiplier { get; set; }
+
+    [JsonPropertyName("armLengthDiagonalMultiplier")]
+    public double ArmLengthDiagonalMultiplier { get; set; }
+
+    [JsonPropertyName("armLengthRadiusMultiplier")]
+    public double ArmLengthRadiusMultiplier { get; set; }
+
+    [JsonPropertyName("armLengthMin")]
+    public double ArmLengthMin { get; set; }
+
+    [JsonPropertyName("armLengthMax")]
+    public double ArmLengthMax { get; set; }
+
     [JsonPropertyName("selectedParameter")]
     public double SelectedParameter { get; set; }
 
@@ -130,6 +148,24 @@ public sealed class IntersectionSourceRoad
 
     public double EffectiveOuterEnvelopeOffset =>
         OuterEnvelopeOffset > 0.0 ? OuterEnvelopeOffset : EffectiveCarriagewaySurfaceOffset;
+
+    public double EffectiveArmLengthOuterEnvelopeMultiplier =>
+        ArmLengthOuterEnvelopeMultiplier > 0.0 ? ArmLengthOuterEnvelopeMultiplier : 2.25;
+
+    public double EffectiveArmLengthCarriagewayMultiplier =>
+        ArmLengthCarriagewayMultiplier > 0.0 ? ArmLengthCarriagewayMultiplier : 3.5;
+
+    public double EffectiveArmLengthDiagonalMultiplier =>
+        ArmLengthDiagonalMultiplier > 0.0 ? ArmLengthDiagonalMultiplier : 0.72;
+
+    public double EffectiveArmLengthRadiusMultiplier =>
+        ArmLengthRadiusMultiplier > 0.0 ? ArmLengthRadiusMultiplier : 2.4;
+
+    public double EffectiveArmLengthMin =>
+        ArmLengthMin > 0.0 ? ArmLengthMin : 10.0;
+
+    public double EffectiveArmLengthMax =>
+        ArmLengthMax > 0.0 ? ArmLengthMax : 48.0;
 }
 
 public sealed class IntersectionProvisionalBoundary2D
