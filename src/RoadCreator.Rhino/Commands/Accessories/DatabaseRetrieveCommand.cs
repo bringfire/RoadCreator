@@ -147,7 +147,7 @@ public class DatabaseRetrieveCommand : Command
                     RhinoApp.WriteLine(Strings.DatabaseEmpty);
                     return Result.Failure;
                 }
-                geometries = result.Value.Geometries;
+                geometries = ExternalDatabase.ResolveBlockDefinitions(doc, result.Value.Geometries);
                 basePoint = result.Value.BasePoint;
             }
             else

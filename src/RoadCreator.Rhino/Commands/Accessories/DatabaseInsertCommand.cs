@@ -103,7 +103,7 @@ public class DatabaseInsertCommand : Command
                     return Result.Failure;
 
                 bool ok = ExternalDatabase.InsertTemplate(
-                    LayerScheme.Database, objectName, geometries.ToArray(), basePoint);
+                    LayerScheme.Database, objectName, geometries.ToArray(), basePoint, doc);
                 if (!ok)
                 {
                     RhinoApp.WriteLine("Failed to write to external database.");

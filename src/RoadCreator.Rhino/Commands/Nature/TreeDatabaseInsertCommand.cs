@@ -99,7 +99,7 @@ public class TreeDatabaseInsertCommand : Command
                     return Result.Failure;
 
                 bool ok = ExternalDatabase.InsertTemplate(
-                    TreeDatabaseNaming.LayerName, treeName, geometries.ToArray(), basePoint);
+                    TreeDatabaseNaming.LayerName, treeName, geometries.ToArray(), basePoint, doc);
                 if (!ok)
                 {
                     RhinoApp.WriteLine("Failed to write to external database.");

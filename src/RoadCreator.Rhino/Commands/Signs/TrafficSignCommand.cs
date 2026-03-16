@@ -178,7 +178,7 @@ public class TrafficSignCommand : Command
                     RhinoApp.WriteLine(Strings.SignDatabaseEmpty);
                     return Result.Failure;
                 }
-                geometries = result.Value.Geometries;
+                geometries = ExternalDatabase.ResolveBlockDefinitions(doc, result.Value.Geometries);
                 basePoint = result.Value.BasePoint;
 
                 // If no companion point in external file, try legacy catalog

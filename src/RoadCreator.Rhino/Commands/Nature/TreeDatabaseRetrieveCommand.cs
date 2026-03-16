@@ -126,7 +126,7 @@ public class TreeDatabaseRetrieveCommand : Command
                     RhinoApp.WriteLine(Strings.TreeDatabaseEmpty);
                     return Result.Failure;
                 }
-                geometries = result.Value.Geometries;
+                geometries = ExternalDatabase.ResolveBlockDefinitions(doc, result.Value.Geometries);
                 basePoint = result.Value.BasePoint;
             }
             else

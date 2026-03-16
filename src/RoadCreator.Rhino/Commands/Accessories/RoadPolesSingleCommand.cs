@@ -215,7 +215,7 @@ public class RoadPolesSingleCommand : Command
                 RhinoApp.WriteLine(Strings.PoleObjectNotFound);
                 return null;
             }
-            return result.Value.Geometries;
+            return ExternalDatabase.ResolveBlockDefinitions(doc, result.Value.Geometries);
         }
 
         string dbPath = LayerScheme.BuildPath(LayerScheme.Database);

@@ -44,7 +44,20 @@ internal static class TreePlacementHelper
     {
         // External database takes priority
         if (ExternalDatabase.IsEnabled)
-            return ExternalDatabase.CollectTreeTemplates();
+        {
+            var extTemplates = ExternalDatabase.CollectTreeTemplates();
+            if (extTemplates == null) return null;
+            // Resolve block definitions so instances can be added to the active doc
+            for (int i = 0; i < extTemplates.Length; i++)
+            {
+                var t = extTemplates[i];
+                extTemplates[i] = t with
+                {
+                    Geometries = ExternalDatabase.ResolveBlockDefinitions(doc, t.Geometries)
+                };
+            }
+            return extTemplates;
+        }
 
         // Fall back to document layers
         string dbLayerName = TreeDatabaseNaming.LayerName;
