@@ -32,6 +32,9 @@ public class DatabaseRetrieveCommand : Command
 
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
+        var dbCheck = ExternalDatabase.ValidateConfiguration();
+        if (dbCheck != null) return dbCheck.Value;
+
         var layers = new LayerManager(doc);
         string dbPath = LayerScheme.BuildPath(LayerScheme.Database);
 
@@ -148,6 +151,11 @@ public class DatabaseRetrieveCommand : Command
                     return Result.Failure;
                 }
                 geometries = ExternalDatabase.ResolveBlockDefinitions(doc, result.Value.Geometries);
+                if (geometries.Length == 0)
+                {
+                    RhinoApp.WriteLine(Strings.DatabaseEmpty);
+                    return Result.Failure;
+                }
                 basePoint = result.Value.BasePoint;
             }
             else

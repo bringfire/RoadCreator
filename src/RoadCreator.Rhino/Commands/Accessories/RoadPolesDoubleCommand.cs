@@ -88,6 +88,9 @@ public class RoadPolesDoubleCommand : Command
 
     private Result RunCore(RhinoDoc doc, RoadPolesDoubleInputs inputs)
     {
+        var dbCheck = ExternalDatabase.ValidateConfiguration();
+        if (dbCheck != null) return dbCheck.Value;
+
         doc.Views.RedrawEnabled = false;
 
         try

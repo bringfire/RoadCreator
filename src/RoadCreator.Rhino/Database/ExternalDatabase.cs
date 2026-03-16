@@ -25,8 +25,27 @@ internal static class ExternalDatabase
         set => _path = value;
     }
 
+    /// <summary>True if a path has been configured (even if the file is missing).</summary>
+    public static bool IsPathSet => !string.IsNullOrEmpty(_path);
+
     /// <summary>True if a path is set and the file exists.</summary>
-    public static bool IsEnabled => !string.IsNullOrEmpty(_path) && File.Exists(_path);
+    public static bool IsEnabled => IsPathSet && File.Exists(_path);
+
+    /// <summary>
+    /// Validates the external database configuration. Call at command entry.
+    /// Returns Result.Failure if a path is configured but the file is missing.
+    /// Returns null if configuration is valid (either enabled or not configured).
+    /// </summary>
+    public static global::Rhino.Commands.Result? ValidateConfiguration()
+    {
+        if (IsPathSet && !IsEnabled)
+        {
+            RhinoApp.WriteLine($"External database file not found: {_path}");
+            RhinoApp.WriteLine("Run RC_SetExternalDatabase to update the path or clear it.");
+            return global::Rhino.Commands.Result.Failure;
+        }
+        return null;
+    }
 
     /// <summary>
     /// Collect tree templates from the external database file.
@@ -177,10 +196,10 @@ internal static class ExternalDatabase
         {
             if (idef.Id != fileDefId) continue;
 
-            // If a definition with this name already exists in the document, reuse it.
-            // This is intentional: the document's version takes precedence to avoid
-            // overwriting user customizations of identically-named blocks.
-            var existing = doc.InstanceDefinitions.Find(idef.Name);
+            // Use a namespaced name so external database definitions never collide
+            // with user-created blocks of the same name in the document.
+            string docDefName = "RC_DB:" + idef.Name;
+            var existing = doc.InstanceDefinitions.Find(docDefName);
             if (existing != null && !existing.IsDeleted)
                 return existing.Id;
 
@@ -217,9 +236,9 @@ internal static class ExternalDatabase
 
             if (defGeoms.Count == 0) return Guid.Empty;
 
-            // Create the definition in the target document
+            // Create the definition in the target document with namespaced name
             int newIdx = doc.InstanceDefinitions.Add(
-                idef.Name,
+                docDefName,
                 idef.Description ?? "",
                 Point3d.Origin,
                 defGeoms,
@@ -299,9 +318,11 @@ internal static class ExternalDatabase
     /// <summary>
     /// Explode a block instance into its component geometry and add to the file.
     /// Applies the instance transform so geometry is in world coordinates.
+    /// Preserves per-component attributes (color, material, linetype) from the
+    /// block definition while applying the template's layer and name.
     /// </summary>
     private static void ExplodeInstanceToFile(
-        File3dm file, ObjectAttributes attrs,
+        File3dm file, ObjectAttributes templateAttrs,
         InstanceReferenceGeometry instRef, RhinoDoc sourceDoc)
     {
         var def = sourceDoc.InstanceDefinitions.FindId(instRef.ParentIdefId);
@@ -318,13 +339,18 @@ internal static class ExternalDatabase
                 var combined = new InstanceReferenceGeometry(
                     nested.ParentIdefId,
                     xform * nested.Xform);
-                ExplodeInstanceToFile(file, attrs, combined, sourceDoc);
+                ExplodeInstanceToFile(file, templateAttrs, combined, sourceDoc);
             }
             else
             {
                 var copy = defObj.Geometry.Duplicate();
                 copy.Transform(xform);
-                file.Objects.Add(copy, attrs);
+                // Keep the component's own visual attributes (color, material, linetype)
+                // but assign the template's layer and name for database organization
+                var childAttrs = defObj.Attributes.Duplicate();
+                childAttrs.LayerIndex = templateAttrs.LayerIndex;
+                childAttrs.Name = templateAttrs.Name;
+                file.Objects.Add(copy, childAttrs);
             }
         }
     }

@@ -48,6 +48,9 @@ public class TrafficSignCommand : Command
 
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
+        var dbCheck = ExternalDatabase.ValidateConfiguration();
+        if (dbCheck != null) return dbCheck.Value;
+
         // 1. Select terrain
         var getTerrain = new GetObject();
         getTerrain.SetCommandPrompt(Strings.SelectTerrain);

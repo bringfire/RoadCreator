@@ -30,6 +30,9 @@ public class DatabaseInsertCommand : Command
 
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
+        var dbCheck = ExternalDatabase.ValidateConfiguration();
+        if (dbCheck != null) return dbCheck.Value;
+
         var layers = new LayerManager(doc);
         string dbPath = LayerScheme.BuildPath(LayerScheme.Database);
 

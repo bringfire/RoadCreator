@@ -34,6 +34,9 @@ public class ForestCommand : Command
 
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
+        var dbCheck = Database.ExternalDatabase.ValidateConfiguration();
+        if (dbCheck != null) return dbCheck.Value;
+
         // Select planar surface for forest area
         var getSurface = new GetObject();
         getSurface.SetCommandPrompt(Strings.SelectForestSurface);

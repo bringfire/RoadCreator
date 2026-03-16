@@ -97,6 +97,9 @@ public class RoadPolesSingleCommand : Command
 
     private Result RunCore(RhinoDoc doc, RoadPolesSingleInputs inputs)
     {
+        var dbCheck = ExternalDatabase.ValidateConfiguration();
+        if (dbCheck != null) return dbCheck.Value;
+
         doc.Views.RedrawEnabled = false;
 
         try
@@ -215,7 +218,13 @@ public class RoadPolesSingleCommand : Command
                 RhinoApp.WriteLine(Strings.PoleObjectNotFound);
                 return null;
             }
-            return ExternalDatabase.ResolveBlockDefinitions(doc, result.Value.Geometries);
+            var resolved = ExternalDatabase.ResolveBlockDefinitions(doc, result.Value.Geometries);
+            if (resolved.Length == 0)
+            {
+                RhinoApp.WriteLine(Strings.PoleObjectNotFound);
+                return null;
+            }
+            return resolved;
         }
 
         string dbPath = LayerScheme.BuildPath(LayerScheme.Database);

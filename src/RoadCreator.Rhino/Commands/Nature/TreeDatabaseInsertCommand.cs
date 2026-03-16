@@ -27,6 +27,9 @@ public class TreeDatabaseInsertCommand : Command
 
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
+        var dbCheck = Database.ExternalDatabase.ValidateConfiguration();
+        if (dbCheck != null) return dbCheck.Value;
+
         var layers = new LayerManager(doc);
 
         // Collect existing names to check for duplicates

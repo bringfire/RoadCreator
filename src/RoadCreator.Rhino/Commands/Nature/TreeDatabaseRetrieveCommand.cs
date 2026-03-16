@@ -30,6 +30,9 @@ public class TreeDatabaseRetrieveCommand : Command
 
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
+        var dbCheck = Database.ExternalDatabase.ValidateConfiguration();
+        if (dbCheck != null) return dbCheck.Value;
+
         var layers = new LayerManager(doc);
 
         // Collect available names — external database or document layers
@@ -127,6 +130,11 @@ public class TreeDatabaseRetrieveCommand : Command
                     return Result.Failure;
                 }
                 geometries = ExternalDatabase.ResolveBlockDefinitions(doc, result.Value.Geometries);
+                if (geometries.Length == 0)
+                {
+                    RhinoApp.WriteLine(Strings.TreeDatabaseEmpty);
+                    return Result.Failure;
+                }
                 basePoint = result.Value.BasePoint;
             }
             else
