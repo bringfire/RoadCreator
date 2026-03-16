@@ -9,22 +9,16 @@ namespace RoadCreator.Core.Signs;
 /// (see <see cref="Accessories.DatabaseNaming"/>) are preferred, but these
 /// legacy offsets serve as fallback for older template files.
 ///
-/// The sign database uses the general "DATABAZE" layer (mapped to
-/// LayerScheme.Database / "RC_Database" in C#). Signs are named by their
+/// The sign database uses the "RC_Database" layer. Signs are named by their
 /// Czech standard ID: A1a, B1, P4, etc.
 /// </summary>
 public static class TrafficSignCatalog
 {
-    /// <summary>
-    /// Layer name for placed traffic signs.
-    /// Uses the original Czech name "Znacky" for backward compatibility with existing
-    /// .3dm files. LayerScheme.TrafficSigns ("Traffic Signs") exists as the English
-    /// alternative under the RoadCreator hierarchy.
-    /// </summary>
-    public const string PlacementLayerName = "Znacky";
+    /// <summary>Layer name for placed traffic signs.</summary>
+    public const string PlacementLayerName = "Traffic Signs";
 
     /// <summary>Object name assigned to placed sign copies.</summary>
-    public const string PlacedSignName = "Znacka";
+    public const string PlacedSignName = "TrafficSign";
 
     /// <summary>
     /// VBScript rotation offset: angle(0) + 90.

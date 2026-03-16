@@ -101,7 +101,6 @@ public class RoadObjectNamingTests
     [Theory]
     [InlineData("Road_1 LongProfile 420", true, 420.0)]
     [InlineData("Road_1 LongProfile 350", true, 350.0)]
-    [InlineData("Road_1 Podélný_profil 420", true, 420.0)] // Czech name
     public void TryParseLongProfileDatum_ValidNames(string name, bool expectedResult, double expectedDatum)
     {
         bool result = RoadObjectNaming.TryParseLongProfileDatum(name, out double datum);

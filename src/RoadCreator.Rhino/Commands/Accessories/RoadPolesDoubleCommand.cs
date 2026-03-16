@@ -6,6 +6,7 @@ using global::Rhino.Input;
 using global::Rhino.Input.Custom;
 using RoadCreator.Core.Accessories;
 using RoadCreator.Core.Localization;
+using RoadCreator.Rhino.Database;
 using RoadCreator.Rhino.Layers;
 
 namespace RoadCreator.Rhino.Commands.Accessories;
@@ -92,7 +93,7 @@ public class RoadPolesDoubleCommand : Command
         try
         {
             // Find pole template in database
-            var poleObjects = RoadPolesSingleCommand.FindDatabasePoleObjects(doc);
+            var poleObjects = RoadPolesSingleCommand.FindDatabasePoleGeometries(doc);
             if (poleObjects == null)
                 return Result.Failure;
 
@@ -194,9 +195,12 @@ public class RoadPolesDoubleCommand : Command
                 }
             }
 
-            // Restore database layer state
-            var layerMgr = new LayerManager(doc);
-            RoadPolesSingleCommand.RestoreDatabaseLayer(doc, layerMgr);
+            // Restore database layer state (only needed for document-layer path)
+            if (!ExternalDatabase.IsEnabled)
+            {
+                var layerMgr = new LayerManager(doc);
+                RoadPolesSingleCommand.RestoreDatabaseLayer(doc, layerMgr);
+            }
 
             RhinoApp.WriteLine(Strings.RoadPolesCreated);
         }

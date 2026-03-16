@@ -7,6 +7,7 @@ using global::Rhino.Input.Custom;
 using RoadCreator.Core.Accessories;
 using RoadCreator.Core.Localization;
 using RoadCreator.Core.Nature;
+using RoadCreator.Rhino.Database;
 using RoadCreator.Rhino.Layers;
 
 namespace RoadCreator.Rhino.Commands.Nature;
@@ -16,7 +17,7 @@ namespace RoadCreator.Rhino.Commands.Nature;
 /// Converts from StromDatabazevyber.rvb.
 ///
 /// Algorithm:
-///   1. Scan "Stromy databaze" layer for named tree objects
+///   1. Scan "Tree Database" layer for named tree objects
 ///   2. Present list for selection
 ///   3. Pick placement point
 ///   4. Copy tree to placement point
@@ -30,54 +31,66 @@ public class TreeDatabaseRetrieveCommand : Command
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
         var layers = new LayerManager(doc);
-        int dbLayerIdx = doc.Layers.FindByFullPath(TreeDatabaseNaming.LayerName, -1);
 
-        if (dbLayerIdx < 0)
+        // Collect available names — external database or document layers
+        string[] nameList;
+        if (ExternalDatabase.IsEnabled)
         {
-            RhinoApp.WriteLine(Strings.TreeDatabaseEmpty);
-            return Result.Failure;
+            nameList = ExternalDatabase.ListTemplateNames(TreeDatabaseNaming.LayerName);
+            if (nameList.Length == 0)
+            {
+                RhinoApp.WriteLine(Strings.TreeDatabaseEmpty);
+                return Result.Failure;
+            }
         }
-
-        // Unlock and show database layer temporarily
-        var dbLayer = doc.Layers[dbLayerIdx];
-        dbLayer.IsLocked = false;
-        dbLayer.IsVisible = true;
-        doc.Layers.Modify(dbLayer, dbLayerIdx, true);
-
-        // Collect unique tree names (exclude companion points)
-        var layerObjects = doc.Objects.FindByLayer(dbLayer);
-        if (layerObjects == null || layerObjects.Length == 0)
+        else
         {
-            RhinoApp.WriteLine(Strings.TreeDatabaseEmpty);
+            int dbLayerIdx = doc.Layers.FindByFullPath(TreeDatabaseNaming.LayerName, -1);
+            if (dbLayerIdx < 0)
+            {
+                RhinoApp.WriteLine(Strings.TreeDatabaseEmpty);
+                return Result.Failure;
+            }
+
+            var dbLayer = doc.Layers[dbLayerIdx];
+            dbLayer.IsLocked = false;
+            dbLayer.IsVisible = true;
+            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+
+            var layerObjects = doc.Objects.FindByLayer(dbLayer);
+            if (layerObjects == null || layerObjects.Length == 0)
+            {
+                RhinoApp.WriteLine(Strings.TreeDatabaseEmpty);
+                layers.LockLayer(TreeDatabaseNaming.LayerName);
+                layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
+                return Result.Failure;
+            }
+
+            var objectNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var obj in layerObjects)
+            {
+                if (obj.Geometry is global::Rhino.Geometry.Point) continue;
+                var name = obj.Attributes.Name;
+                if (string.IsNullOrEmpty(name)) continue;
+                if (DatabaseNaming.IsCompanionPointName(name)) continue;
+                objectNames.Add(name);
+            }
+
+            if (objectNames.Count == 0)
+            {
+                RhinoApp.WriteLine(Strings.TreeDatabaseNoTrees);
+                layers.LockLayer(TreeDatabaseNaming.LayerName);
+                layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
+                return Result.Failure;
+            }
+
             layers.LockLayer(TreeDatabaseNaming.LayerName);
             layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
-            return Result.Failure;
-        }
 
-        var objectNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var obj in layerObjects)
-        {
-            if (obj.Geometry is global::Rhino.Geometry.Point) continue;
-            var name = obj.Attributes.Name;
-            if (string.IsNullOrEmpty(name)) continue;
-            if (DatabaseNaming.IsCompanionPointName(name)) continue;
-            objectNames.Add(name);
+            nameList = objectNames.ToArray();
         }
-
-        if (objectNames.Count == 0)
-        {
-            RhinoApp.WriteLine(Strings.TreeDatabaseNoTrees);
-            layers.LockLayer(TreeDatabaseNaming.LayerName);
-            layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
-            return Result.Failure;
-        }
-
-        // Lock and hide for selection UI
-        layers.LockLayer(TreeDatabaseNaming.LayerName);
-        layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
 
         // Present selection via command-line options
-        var nameList = objectNames.ToArray();
         var getChoice = new GetOption();
         getChoice.SetCommandPrompt(Strings.SelectTreeFromDatabase);
         foreach (var name in nameList)
@@ -100,64 +113,83 @@ public class TreeDatabaseRetrieveCommand : Command
 
         try
         {
-            // Unlock database to read objects
-            dbLayer = doc.Layers[dbLayerIdx];
-            dbLayer.IsLocked = false;
-            dbLayer.IsVisible = true;
-            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+            // Get geometries + base point — external or document
+            GeometryBase[] geometries;
+            Point3d basePoint;
 
-            // Find companion point for base position
-            string companionName = DatabaseNaming.GetCompanionPointName(selectedName);
-            var companionSettings = new ObjectEnumeratorSettings
+            if (ExternalDatabase.IsEnabled)
             {
-                LayerIndexFilter = dbLayerIdx,
-                NameFilter = companionName,
-            };
-            Point3d basePoint = Point3d.Origin;
-            foreach (var ptObj in doc.Objects.GetObjectList(companionSettings))
-            {
-                if (ptObj.Geometry is global::Rhino.Geometry.Point pt)
+                var result = ExternalDatabase.FindObjectsByName(
+                    TreeDatabaseNaming.LayerName, selectedName);
+                if (result == null)
                 {
-                    basePoint = pt.Location;
-                    break;
+                    RhinoApp.WriteLine(Strings.TreeDatabaseEmpty);
+                    return Result.Failure;
                 }
+                geometries = result.Value.Geometries;
+                basePoint = result.Value.BasePoint;
             }
+            else
+            {
+                int dbLayerIdx = doc.Layers.FindByFullPath(TreeDatabaseNaming.LayerName, -1);
+                var dbLayer = doc.Layers[dbLayerIdx];
+                dbLayer.IsLocked = false;
+                dbLayer.IsVisible = true;
+                doc.Layers.Modify(dbLayer, dbLayerIdx, true);
 
-            // Find all objects with the selected name
-            var sourceSettings = new ObjectEnumeratorSettings
-            {
-                LayerIndexFilter = dbLayerIdx,
-                NameFilter = selectedName,
-            };
-            var sourceObjects = doc.Objects.GetObjectList(sourceSettings).ToArray();
-            if (sourceObjects.Length == 0)
-            {
+                string companionName = DatabaseNaming.GetCompanionPointName(selectedName);
+                var companionSettings = new ObjectEnumeratorSettings
+                {
+                    LayerIndexFilter = dbLayerIdx,
+                    NameFilter = companionName,
+                };
+                basePoint = Point3d.Origin;
+                foreach (var ptObj in doc.Objects.GetObjectList(companionSettings))
+                {
+                    if (ptObj.Geometry is global::Rhino.Geometry.Point pt)
+                    {
+                        basePoint = pt.Location;
+                        break;
+                    }
+                }
+
+                var sourceSettings = new ObjectEnumeratorSettings
+                {
+                    LayerIndexFilter = dbLayerIdx,
+                    NameFilter = selectedName,
+                };
+                var sourceObjects = doc.Objects.GetObjectList(sourceSettings).ToArray();
+                if (sourceObjects.Length == 0)
+                {
+                    layers.LockLayer(TreeDatabaseNaming.LayerName);
+                    layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
+                    return Result.Failure;
+                }
+
+                geometries = sourceObjects
+                    .Where(o => o.Geometry != null)
+                    .Select(o => o.Geometry!.Duplicate())
+                    .ToArray();
+
                 layers.LockLayer(TreeDatabaseNaming.LayerName);
                 layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
-                return Result.Failure;
             }
 
-            // VBScript: output layer is "Stromy z databaze" (Trees from database)
             int targetLayerIdx = layers.EnsureLayer(LayerScheme.BuildPath(LayerScheme.Trees),
                 System.Drawing.Color.FromArgb(0, 190, 0));
             var targetAttrs = new ObjectAttributes { LayerIndex = targetLayerIdx };
 
             // Copy objects
             var copiedIds = new List<Guid>();
-            foreach (var srcObj in sourceObjects)
+            foreach (var geom in geometries)
             {
-                if (srcObj.Geometry == null) continue;
-                var copy = srcObj.Geometry.Duplicate();
+                var copy = geom.Duplicate();
                 copy.Transform(Transform.Translation(placementPt - basePoint));
-                targetAttrs.Name = selectedName + "Strom";
+                targetAttrs.Name = selectedName + "Tree";
                 var id = doc.Objects.Add(copy, targetAttrs);
                 if (id != Guid.Empty)
                     copiedIds.Add(id);
             }
-
-            // Lock and hide database
-            layers.LockLayer(TreeDatabaseNaming.LayerName);
-            layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
 
             // Show placed objects and pick rotation
             doc.Views.RedrawEnabled = true;
@@ -170,9 +202,6 @@ public class TreeDatabaseRetrieveCommand : Command
             if (getRotation.Get() == GetResult.Point)
             {
                 var rotationPt = getRotation.Point();
-                // VBScript uses Rhino.Angle which returns [0, 360] counterclockwise.
-                // Atan2 returns [-180, 180]. Both produce the same rotation when
-                // combined with the +90 offset for typical placement scenarios.
                 double angle = System.Math.Atan2(
                     rotationPt.Y - placementPt.Y,
                     rotationPt.X - placementPt.X) * (180.0 / System.Math.PI);

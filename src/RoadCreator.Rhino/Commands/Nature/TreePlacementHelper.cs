@@ -2,14 +2,15 @@ using global::Rhino;
 using global::Rhino.DocObjects;
 using global::Rhino.Geometry;
 using RoadCreator.Core.Nature;
+using RoadCreator.Rhino.Database;
 using RoadCreator.Rhino.Layers;
 
 namespace RoadCreator.Rhino.Commands.Nature;
 
 /// <summary>
-/// A tree template from the database: its geometry object IDs and base point.
+/// A tree template from the database: its geometry and base point.
 /// </summary>
-internal record TreeTemplate(string Name, Guid[] ObjectIds, Point3d BasePoint);
+internal record TreeTemplate(string Name, GeometryBase[] Geometries, Point3d BasePoint);
 
 /// <summary>
 /// Shared utilities for tree placement across forest, silhouette, and magic copy commands.
@@ -28,23 +29,24 @@ internal static class TreePlacementHelper
         var scaleXform = Transform.Scale(placePt, scale);
         var xform = scaleXform * rotXform * moveXform;
 
-        foreach (var objId in tree.ObjectIds)
+        foreach (var geom in tree.Geometries)
         {
-            var obj = doc.Objects.FindId(objId);
-            if (obj?.Geometry == null) continue;
-            var copy = obj.Geometry.Duplicate();
+            var copy = geom.Duplicate();
             copy.Transform(xform);
             doc.Objects.Add(copy, attrs);
         }
     }
 
     /// <summary>
-    /// Collect tree templates from the "Stromy databaze" layer.
-    /// Falls back to checking the LayerScheme.TreeDatabase path.
-    /// Temporarily unlocks/shows the database layer during collection.
+    /// Collect tree templates from the external database or the "Tree Database" layer.
     /// </summary>
     internal static TreeTemplate[]? CollectTreeTemplates(RhinoDoc doc)
     {
+        // External database takes priority
+        if (ExternalDatabase.IsEnabled)
+            return ExternalDatabase.CollectTreeTemplates();
+
+        // Fall back to document layers
         string dbLayerName = TreeDatabaseNaming.LayerName;
         int dbLayerIdx = doc.Layers.FindByFullPath(dbLayerName, -1);
         if (dbLayerIdx < 0)
@@ -64,7 +66,7 @@ internal static class TreePlacementHelper
             var layerObjects = doc.Objects.FindByLayer(dbLayer);
             if (layerObjects == null || layerObjects.Length == 0) return null;
 
-            var nameToObjects = new Dictionary<string, List<Guid>>(StringComparer.Ordinal);
+            var nameToGeometries = new Dictionary<string, List<GeometryBase>>(StringComparer.Ordinal);
             var nameToBase = new Dictionary<string, Point3d>(StringComparer.Ordinal);
 
             foreach (var obj in layerObjects)
@@ -83,16 +85,16 @@ internal static class TreePlacementHelper
                     continue;
                 }
 
-                if (!nameToObjects.TryGetValue(name, out var list))
+                if (!nameToGeometries.TryGetValue(name, out var list))
                 {
-                    list = new List<Guid>();
-                    nameToObjects[name] = list;
+                    list = new List<GeometryBase>();
+                    nameToGeometries[name] = list;
                 }
-                list.Add(obj.Id);
+                list.Add(obj.Geometry.Duplicate());
             }
 
             var templates = new List<TreeTemplate>();
-            foreach (var kvp in nameToObjects)
+            foreach (var kvp in nameToGeometries)
             {
                 var basePt = nameToBase.TryGetValue(kvp.Key, out var bp) ? bp : Point3d.Origin;
                 templates.Add(new TreeTemplate(kvp.Key, kvp.Value.ToArray(), basePt));

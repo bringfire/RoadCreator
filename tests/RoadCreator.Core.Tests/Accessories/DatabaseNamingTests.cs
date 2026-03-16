@@ -115,11 +115,10 @@ public class DatabaseNamingTests
     }
 
     [Fact]
-    public void PoleName_MatchesVBScript()
+    public void PoleName_CompanionFormat()
     {
-        // VBScript uses "Silnicnisloupek(RoadCreator)" as the pole object name
-        // The companion would be "Silnicnisloupek(RoadCreator)-point(RoadCreator)"
-        var companion = DatabaseNaming.GetCompanionPointName("Silnicnisloupek(RoadCreator)");
-        Assert.Equal("Silnicnisloupek(RoadCreator)-point(RoadCreator)", companion);
+        // Pole template uses "RoadPole(RoadCreator)" as the object name
+        var companion = DatabaseNaming.GetCompanionPointName("RoadPole(RoadCreator)");
+        Assert.Equal("RoadPole(RoadCreator)-point(RoadCreator)", companion);
     }
 }

@@ -7,6 +7,7 @@ using global::Rhino.Input.Custom;
 using RoadCreator.Core.Accessories;
 using RoadCreator.Core.Localization;
 using RoadCreator.Core.Signs;
+using RoadCreator.Rhino.Database;
 using RoadCreator.Rhino.Layers;
 using RoadCreator.Rhino.Terrain;
 
@@ -21,11 +22,11 @@ namespace RoadCreator.Rhino.Commands.Signs;
 ///   2. Pick placement point
 ///   3. Project point down to terrain
 ///   4. User selects sign from available signs in the database
-///   5. Unlock "DATABAZE" layer, copy sign objects from base point to projected point
-///   6. Move copies to "Znacky" layer
+///   5. Unlock "RC_Database" layer, copy sign objects from base point to projected point
+///   6. Move copies to "Traffic Signs" layer
 ///   7. User picks rotation direction point
 ///   8. Rotate copies by atan2(angle) + 90°
-///   9. Name copies "Znacka"
+///   9. Name copies "TrafficSign"
 ///
 /// Deviation from VBScript:
 ///   S1: The original had 14 separate scripts, each hardcoding a sign ID and base point.
@@ -77,33 +78,49 @@ public class TrafficSignCommand : Command
         }
         var placePt = new Point3d(projected.Value.X, projected.Value.Y, projected.Value.Z);
 
-        // 4. Find database layer — try bare "DATABAZE" first (VBScript compat), then RC_Database
+        // 4. Find available signs — external database or document layers
         var layers = new LayerManager(doc);
-        int dbLayerIdx = doc.Layers.FindByFullPath("DATABAZE", -1);
-        if (dbLayerIdx < 0)
-            dbLayerIdx = doc.Layers.FindByFullPath(
-                LayerScheme.BuildPath(LayerScheme.Database), -1);
-        if (dbLayerIdx < 0)
+        string dbPath = LayerScheme.BuildPath(LayerScheme.Database);
+
+        string[] nameList;
+        bool usingExternal = ExternalDatabase.IsEnabled;
+        int dbLayerIdx = -1;
+        bool wasLocked = false;
+        bool wasHidden = false;
+
+        if (usingExternal)
         {
-            RhinoApp.WriteLine(Strings.SignDatabaseNotFound);
-            return Result.Failure;
+            nameList = ExternalDatabase.ListTemplateNames(LayerScheme.Database);
+            if (nameList.Length == 0)
+            {
+                RhinoApp.WriteLine(Strings.SignDatabaseEmpty);
+                return Result.Failure;
+            }
         }
-
-        // Temporarily unlock and show the database layer
-        var dbLayer = doc.Layers[dbLayerIdx];
-        bool wasLocked = dbLayer.IsLocked;
-        bool wasHidden = !dbLayer.IsVisible;
-        dbLayer.IsLocked = false;
-        dbLayer.IsVisible = true;
-        doc.Layers.Modify(dbLayer, dbLayerIdx, true);
-
-        try
+        else
         {
-            // Collect available sign names from the database
+            dbLayerIdx = doc.Layers.FindByFullPath(dbPath, -1);
+            if (dbLayerIdx < 0)
+            {
+                RhinoApp.WriteLine(Strings.SignDatabaseNotFound);
+                return Result.Failure;
+            }
+
+            var dbLayer = doc.Layers[dbLayerIdx];
+            wasLocked = dbLayer.IsLocked;
+            wasHidden = !dbLayer.IsVisible;
+            dbLayer.IsLocked = false;
+            dbLayer.IsVisible = true;
+            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+
             var layerObjects = doc.Objects.FindByLayer(dbLayer);
             if (layerObjects == null || layerObjects.Length == 0)
             {
                 RhinoApp.WriteLine(Strings.SignDatabaseEmpty);
+                dbLayer = doc.Layers[dbLayerIdx];
+                if (wasLocked) dbLayer.IsLocked = true;
+                if (wasHidden) dbLayer.IsVisible = false;
+                doc.Layers.Modify(dbLayer, dbLayerIdx, true);
                 return Result.Failure;
             }
 
@@ -120,53 +137,92 @@ public class TrafficSignCommand : Command
             if (signNames.Count == 0)
             {
                 RhinoApp.WriteLine(Strings.SignDatabaseEmpty);
+                dbLayer = doc.Layers[dbLayerIdx];
+                if (wasLocked) dbLayer.IsLocked = true;
+                if (wasHidden) dbLayer.IsVisible = false;
+                doc.Layers.Modify(dbLayer, dbLayerIdx, true);
                 return Result.Failure;
             }
 
-            // Hide database for selection UI
             dbLayer = doc.Layers[dbLayerIdx];
             dbLayer.IsLocked = true;
             dbLayer.IsVisible = false;
             doc.Layers.Modify(dbLayer, dbLayerIdx, true);
 
-            // 5. User selects sign
-            var nameList = signNames.OrderBy(n => n, StringComparer.Ordinal).ToArray();
-            var getChoice = new GetOption();
-            getChoice.SetCommandPrompt(Strings.SelectSignFromDatabase);
-            foreach (var name in nameList)
-                getChoice.AddOption(name.Replace(" ", "_"));
-            if (getChoice.Get() != GetResult.Option)
-                return Result.Cancel;
-            int choiceIndex = getChoice.Option().Index - 1;
-            if (choiceIndex < 0 || choiceIndex >= nameList.Length)
-                return Result.Cancel;
-            string selectedSign = nameList[choiceIndex];
+            nameList = signNames.OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        }
 
-            // Re-unlock database to copy objects
-            dbLayer = doc.Layers[dbLayerIdx];
-            dbLayer.IsLocked = false;
-            dbLayer.IsVisible = true;
-            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+        // 5. User selects sign
+        var getChoice = new GetOption();
+        getChoice.SetCommandPrompt(Strings.SelectSignFromDatabase);
+        foreach (var name in nameList)
+            getChoice.AddOption(name.Replace(" ", "_"));
+        if (getChoice.Get() != GetResult.Option)
+            return Result.Cancel;
+        int choiceIndex = getChoice.Option().Index - 1;
+        if (choiceIndex < 0 || choiceIndex >= nameList.Length)
+            return Result.Cancel;
+        string selectedSign = nameList[choiceIndex];
 
-            // Find base point: prefer companion point, fall back to legacy catalog
-            bool foundCompanion = false;
-            Point3d basePoint = Point3d.Origin;
-            string companionName = DatabaseNaming.GetCompanionPointName(selectedSign);
-            foreach (var obj in layerObjects)
+        try
+        {
+            // Get geometries + base point — external or document
+            GeometryBase[] geometries;
+            Point3d basePoint;
+
+            if (usingExternal)
             {
-                if (obj.Attributes.Name == companionName && obj.Geometry is global::Rhino.Geometry.Point pt)
+                var result = ExternalDatabase.FindObjectsByName(LayerScheme.Database, selectedSign);
+                if (result == null)
                 {
-                    basePoint = pt.Location;
-                    foundCompanion = true;
-                    break;
+                    RhinoApp.WriteLine(Strings.SignDatabaseEmpty);
+                    return Result.Failure;
                 }
+                geometries = result.Value.Geometries;
+                basePoint = result.Value.BasePoint;
+
+                // If no companion point in external file, try legacy catalog
+                if (basePoint == Point3d.Origin &&
+                    TrafficSignCatalog.TryGetLegacyBasePoint(selectedSign, out var legacy))
+                    basePoint = new Point3d(legacy.X, legacy.Y, legacy.Z);
+            }
+            else
+            {
+                var dbLayer = doc.Layers[dbLayerIdx];
+                dbLayer.IsLocked = false;
+                dbLayer.IsVisible = true;
+                doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+
+                var layerObjects = doc.Objects.FindByLayer(dbLayer);
+                bool foundCompanion = false;
+                basePoint = Point3d.Origin;
+                string companionName = DatabaseNaming.GetCompanionPointName(selectedSign);
+                foreach (var obj in layerObjects!)
+                {
+                    if (obj.Attributes.Name == companionName && obj.Geometry is global::Rhino.Geometry.Point pt)
+                    {
+                        basePoint = pt.Location;
+                        foundCompanion = true;
+                        break;
+                    }
+                }
+
+                if (!foundCompanion)
+                {
+                    if (TrafficSignCatalog.TryGetLegacyBasePoint(selectedSign, out var legacy))
+                        basePoint = new Point3d(legacy.X, legacy.Y, legacy.Z);
+                }
+
+                geometries = layerObjects!
+                    .Where(o => o.Attributes.Name == selectedSign && o.Geometry != null)
+                    .Select(o => o.Geometry!.Duplicate())
+                    .ToArray();
             }
 
-            // If no companion point found, try legacy base point from catalog
-            if (!foundCompanion)
+            if (geometries.Length == 0)
             {
-                if (TrafficSignCatalog.TryGetLegacyBasePoint(selectedSign, out var legacy))
-                    basePoint = new Point3d(legacy.X, legacy.Y, legacy.Z);
+                RhinoApp.WriteLine(Strings.SignDatabaseEmpty);
+                return Result.Failure;
             }
 
             doc.Views.RedrawEnabled = false;
@@ -182,21 +238,13 @@ public class TrafficSignCommand : Command
             };
 
             var copiedIds = new List<Guid>();
-            foreach (var obj in layerObjects)
+            foreach (var geom in geometries)
             {
-                if (obj.Attributes.Name != selectedSign) continue;
-                if (obj.Geometry == null) continue;
-                var copy = obj.Geometry.Duplicate();
+                var copy = geom.Duplicate();
                 copy.Transform(Transform.Translation(placePt - basePoint));
                 var id = doc.Objects.Add(copy, signAttrs);
                 if (id != Guid.Empty)
                     copiedIds.Add(id);
-            }
-
-            if (copiedIds.Count == 0)
-            {
-                RhinoApp.WriteLine(Strings.SignDatabaseEmpty);
-                return Result.Failure;
             }
 
             // Re-enable redraw so user can see placed sign and pick rotation
@@ -225,11 +273,14 @@ public class TrafficSignCommand : Command
         }
         finally
         {
-            // Restore database layer state
-            dbLayer = doc.Layers[dbLayerIdx];
-            if (wasLocked) dbLayer.IsLocked = true;
-            if (wasHidden) dbLayer.IsVisible = false;
-            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+            // Restore database layer state (only relevant for document layers)
+            if (!usingExternal && dbLayerIdx >= 0)
+            {
+                var dbLayer = doc.Layers[dbLayerIdx];
+                if (wasLocked) dbLayer.IsLocked = true;
+                if (wasHidden) dbLayer.IsVisible = false;
+                doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+            }
             doc.Views.RedrawEnabled = true;
         }
 

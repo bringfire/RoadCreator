@@ -6,6 +6,7 @@ using global::Rhino.Input;
 using global::Rhino.Input.Custom;
 using RoadCreator.Core.Accessories;
 using RoadCreator.Core.Localization;
+using RoadCreator.Rhino.Database;
 using RoadCreator.Rhino.Layers;
 
 namespace RoadCreator.Rhino.Commands.Accessories;
@@ -30,18 +31,24 @@ public class DatabaseInsertCommand : Command
     protected override Result RunCommand(RhinoDoc doc, RunMode mode)
     {
         var layers = new LayerManager(doc);
-
-        // Ensure database layer exists
-        int dbLayerIdx = layers.EnsureLayer(LayerScheme.BuildPath(LayerScheme.Database),
-            System.Drawing.Color.FromArgb(0, 0, 0));
-
-        // Collect existing names from database layer
-        var existingNames = CollectExistingNames(doc, dbLayerIdx);
-
-        // Lock and hide database layer after scanning
         string dbPath = LayerScheme.BuildPath(LayerScheme.Database);
-        layers.LockLayer(dbPath);
-        layers.SetLayerVisible(dbPath, false);
+
+        // Collect existing names to check for duplicates
+        HashSet<string> existingNames;
+        if (ExternalDatabase.IsEnabled)
+        {
+            existingNames = new HashSet<string>(
+                ExternalDatabase.ListTemplateNames(LayerScheme.Database),
+                StringComparer.Ordinal);
+        }
+        else
+        {
+            int dbLayerIdx = layers.EnsureLayer(dbPath,
+                System.Drawing.Color.FromArgb(0, 0, 0));
+            existingNames = CollectExistingNames(doc, dbLayerIdx);
+            layers.LockLayer(dbPath);
+            layers.SetLayerVisible(dbPath, false);
+        }
 
         // Select objects
         var getObjects = new GetObject();
@@ -81,38 +88,66 @@ public class DatabaseInsertCommand : Command
 
         try
         {
-            // Unlock database layer for modification
-            var dbLayer = doc.Layers[dbLayerIdx];
-            dbLayer.IsLocked = false;
-            dbLayer.IsVisible = true;
-            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
-
-            // Create companion point
-            var companionName = DatabaseNaming.GetCompanionPointName(objectName);
-            var pointId = doc.Objects.AddPoint(basePoint);
-            var pointObj = doc.Objects.FindId(pointId);
-            if (pointObj != null)
+            if (ExternalDatabase.IsEnabled)
             {
-                var ptAttrs = pointObj.Attributes;
-                ptAttrs.Name = companionName;
-                ptAttrs.LayerIndex = dbLayerIdx;
-                doc.Objects.ModifyAttributes(pointId, ptAttrs, true);
-            }
+                // Gather geometry from selected objects
+                var geometries = new List<GeometryBase>();
+                foreach (var objId in objectIds)
+                {
+                    var obj = doc.Objects.FindId(objId);
+                    if (obj?.Geometry == null) continue;
+                    geometries.Add(obj.Geometry.Duplicate());
+                }
 
-            // Set name and layer for all selected objects
-            foreach (var objId in objectIds)
+                if (geometries.Count == 0)
+                    return Result.Failure;
+
+                bool ok = ExternalDatabase.InsertTemplate(
+                    LayerScheme.Database, objectName, geometries.ToArray(), basePoint);
+                if (!ok)
+                {
+                    RhinoApp.WriteLine("Failed to write to external database.");
+                    return Result.Failure;
+                }
+            }
+            else
             {
-                var obj = doc.Objects.FindId(objId);
-                if (obj == null) continue;
-                var objAttrs = obj.Attributes;
-                objAttrs.Name = objectName;
-                objAttrs.LayerIndex = dbLayerIdx;
-                doc.Objects.ModifyAttributes(objId, objAttrs, true);
-            }
+                int dbLayerIdx = layers.EnsureLayer(dbPath,
+                    System.Drawing.Color.FromArgb(0, 0, 0));
 
-            // Lock and hide database layer
-            layers.LockLayer(dbPath);
-            layers.SetLayerVisible(dbPath, false);
+                // Unlock database layer for modification
+                var dbLayer = doc.Layers[dbLayerIdx];
+                dbLayer.IsLocked = false;
+                dbLayer.IsVisible = true;
+                doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+
+                // Create companion point
+                var companionName = DatabaseNaming.GetCompanionPointName(objectName);
+                var pointId = doc.Objects.AddPoint(basePoint);
+                var pointObj = doc.Objects.FindId(pointId);
+                if (pointObj != null)
+                {
+                    var ptAttrs = pointObj.Attributes;
+                    ptAttrs.Name = companionName;
+                    ptAttrs.LayerIndex = dbLayerIdx;
+                    doc.Objects.ModifyAttributes(pointId, ptAttrs, true);
+                }
+
+                // Set name and layer for all selected objects
+                foreach (var objId in objectIds)
+                {
+                    var obj = doc.Objects.FindId(objId);
+                    if (obj == null) continue;
+                    var objAttrs = obj.Attributes;
+                    objAttrs.Name = objectName;
+                    objAttrs.LayerIndex = dbLayerIdx;
+                    doc.Objects.ModifyAttributes(objId, objAttrs, true);
+                }
+
+                // Lock and hide database layer
+                layers.LockLayer(dbPath);
+                layers.SetLayerVisible(dbPath, false);
+            }
 
             RhinoApp.WriteLine(Strings.DatabaseInsertDone);
         }

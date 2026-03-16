@@ -22,7 +22,7 @@ namespace RoadCreator.Rhino.Commands.Nature;
 /// Algorithm:
 ///   1. Select planar surface defining the forest area
 ///   2. Select terrain for vertical projection
-///   3. Collect tree templates from "Stromy databaze" layer
+///   3. Collect tree templates from "Tree Database" layer
 ///   4. Divide surface domain into grid cells at user-specified density
 ///   5. At each cell: jitter ±density/2, project to terrain, place random tree
 ///      with random rotation (0-360°) and scale variation

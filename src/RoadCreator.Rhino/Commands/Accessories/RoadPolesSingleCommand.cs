@@ -6,6 +6,7 @@ using global::Rhino.Input;
 using global::Rhino.Input.Custom;
 using RoadCreator.Core.Accessories;
 using RoadCreator.Core.Localization;
+using RoadCreator.Rhino.Database;
 using RoadCreator.Rhino.Layers;
 
 namespace RoadCreator.Rhino.Commands.Accessories;
@@ -20,7 +21,7 @@ namespace RoadCreator.Rhino.Commands.Accessories;
 ///   3. Divide curve at 5m base intervals
 ///   4. At each point: estimate local radius from angle change
 ///   5. Place pole only when enough intervals have passed (radius-dependent)
-///   6. Pole objects come from RC_Database layer ("Silnicnisloupek(RoadCreator)")
+///   6. Pole objects come from RC_Database layer ("RoadPole(RoadCreator)")
 /// </summary>
 [System.Runtime.InteropServices.Guid("A1000005-B2C3-D4E5-F6A7-B8C9D0E1F205")]
 public class RoadPolesSingleCommand : Command
@@ -101,7 +102,7 @@ public class RoadPolesSingleCommand : Command
         try
         {
             // Find pole template in database
-            var poleObjects = FindDatabasePoleObjects(doc);
+            var poleObjects = FindDatabasePoleGeometries(doc);
             if (poleObjects == null)
                 return Result.Failure;
 
@@ -166,8 +167,9 @@ public class RoadPolesSingleCommand : Command
                 }
             }
 
-            // Restore database layer state
-            RestoreDatabaseLayer(doc, layers);
+            // Restore database layer state (only needed for document-layer path)
+            if (!ExternalDatabase.IsEnabled)
+                RestoreDatabaseLayer(doc, layers);
 
             RhinoApp.WriteLine(Strings.RoadPolesCreated);
         }
@@ -201,8 +203,21 @@ public class RoadPolesSingleCommand : Command
         return distB > distA ? 0 : 180;
     }
 
-    internal static RhinoObject[]? FindDatabasePoleObjects(RhinoDoc doc)
+    internal static GeometryBase[]? FindDatabasePoleGeometries(RhinoDoc doc)
     {
+        // External database takes priority
+        if (ExternalDatabase.IsEnabled)
+        {
+            var result = ExternalDatabase.FindObjectsByName(
+                LayerScheme.Database, "RoadPole(RoadCreator)");
+            if (result == null)
+            {
+                RhinoApp.WriteLine(Strings.PoleObjectNotFound);
+                return null;
+            }
+            return result.Value.Geometries;
+        }
+
         string dbPath = LayerScheme.BuildPath(LayerScheme.Database);
         int dbLayerIdx = doc.Layers.FindByFullPath(dbPath, -1);
         if (dbLayerIdx < 0)
@@ -223,32 +238,37 @@ public class RoadPolesSingleCommand : Command
         var settings = new ObjectEnumeratorSettings
         {
             LayerIndexFilter = dbLayerIdx,
-            NameFilter = "Silnicnisloupek(RoadCreator)",
+            NameFilter = "RoadPole(RoadCreator)",
         };
         var objects = doc.Objects.GetObjectList(settings).ToArray();
         if (objects.Length == 0)
         {
+            // Restore layer state before returning failure
+            dbLayer = doc.Layers[dbLayerIdx];
+            if (wasLocked) dbLayer.IsLocked = true;
+            if (!wasVisible) dbLayer.IsVisible = false;
+            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+
             RhinoApp.WriteLine(Strings.PoleObjectNotFound);
             return null;
         }
 
-        return objects;
+        return objects.Where(o => o.Geometry != null).Select(o => o.Geometry!.Duplicate()).ToArray();
     }
 
-    internal static void PlacePoleFromDatabase(RhinoDoc doc, RhinoObject[] poleObjects,
+    internal static void PlacePoleFromDatabase(RhinoDoc doc, GeometryBase[] poleGeometries,
         Point3d position, double rotation, ObjectAttributes attrs)
     {
         // VBScript base point: (-1, 0, 0)
         var basePoint = new Point3d(-1, 0, 0);
 
-        foreach (var poleObj in poleObjects)
+        foreach (var geom in poleGeometries)
         {
-            if (poleObj.Geometry == null) continue;
-            var copy = poleObj.Geometry.Duplicate();
+            var copy = geom.Duplicate();
             copy.Transform(Transform.Translation(position - basePoint));
             copy.Transform(Transform.Rotation(rotation * System.Math.PI / 180.0,
                 Vector3d.ZAxis, position));
-            attrs.Name = "Silnicnisloupek";
+            attrs.Name = "RoadPole";
             doc.Objects.Add(copy, attrs);
         }
     }

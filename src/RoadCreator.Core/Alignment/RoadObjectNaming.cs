@@ -106,7 +106,7 @@ public static class RoadObjectNaming
 
     /// <summary>
     /// Try to parse a datum value from a longitudinal profile point name.
-    /// Expected format: "{roadName} LongProfile {datum}" or "{roadName} Podélný_profil {datum}"
+    /// Expected format: "{roadName} LongProfile {datum}"
     /// </summary>
     public static bool TryParseLongProfileDatum(string? objectName, out double datum)
     {
@@ -118,8 +118,7 @@ public static class RoadObjectNaming
         if (parts.Length < 3)
             return false;
 
-        // Check for English or Czech suffix
-        if (parts[1] == LongProfileSuffix || parts[1] == "Podélný_profil")
+        if (parts[1] == LongProfileSuffix)
             return double.TryParse(parts[2], System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out datum);
 

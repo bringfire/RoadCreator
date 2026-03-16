@@ -31,7 +31,6 @@ public static class RouteDiscovery
 {
     /// <summary>
     /// System layer names that should be excluded from road selection.
-    /// Maps to VBScript: Terén, Default, 3D model terénu, RC 3D modely, Svahy, RC_Databaze
     /// </summary>
     private static readonly HashSet<string> SystemLayerNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -39,9 +38,8 @@ public static class RouteDiscovery
         LayerScheme.Terrain,   // "TERRAIN"
         LayerScheme.Database,  // "RC_Database"
         "Default",
-        "DATABAZE",            // VBScript legacy database layer
-        "Stromy databaze",     // Tree database
-        "Znacky",              // Traffic signs
+        Core.Nature.TreeDatabaseNaming.LayerName,  // "Tree Database"
+        Core.Signs.TrafficSignCatalog.PlacementLayerName,  // "Traffic Signs"
     };
 
     /// <summary>

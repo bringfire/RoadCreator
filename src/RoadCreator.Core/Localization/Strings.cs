@@ -170,8 +170,8 @@ public static class Strings
     public const string SelectSecondPoleEdgeCurve = "Select second road edge curve";
     public const string SelectRoadAxisForPoles = "Pick road axis direction";
     public const string RoadPolesCreated = "Road poles placed.";
-    public const string PolesDatabaseNotFound = "Database layer not found. Create an RC_Database layer with a pole object named 'Silnicnisloupek(RoadCreator)'.";
-    public const string PoleObjectNotFound = "Pole object 'Silnicnisloupek(RoadCreator)' not found in database.";
+    public const string PolesDatabaseNotFound = "Database layer not found. Create an RC_Database layer with a pole object named 'RoadPole(RoadCreator)'.";
+    public const string PoleObjectNotFound = "Pole object 'RoadPole(RoadCreator)' not found in database.";
 
     // Accessories — Perpendicular profile
     public const string SelectProfileCurve = "Select guide curve";
@@ -252,7 +252,7 @@ public static class Strings
     public const string SelectSignFromDatabase = "Select traffic sign from database";
     public const string SelectSignRotationPoint = "Select rotation direction point";
     public const string TrafficSignPlaced = "Traffic sign placed.";
-    public const string SignDatabaseNotFound = "Database layer not found. Create a 'DATABAZE' or 'RC_Database' layer with sign objects.";
+    public const string SignDatabaseNotFound = "Database layer not found. Create an 'RC_Database' layer with sign objects.";
     public const string SignDatabaseEmpty = "No signs found in database.";
 
     // Route Discovery / RC2 Enhancements

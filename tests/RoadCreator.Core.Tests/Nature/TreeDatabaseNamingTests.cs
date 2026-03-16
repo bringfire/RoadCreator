@@ -8,24 +8,24 @@ public class TreeDatabaseNamingTests
     // --- Constants ---
 
     [Fact]
-    public void LayerName_IsStromyDatabaze()
+    public void LayerName_IsTreeDatabase()
     {
-        Assert.Equal("Stromy databaze", TreeDatabaseNaming.LayerName);
+        Assert.Equal("Tree Database", TreeDatabaseNaming.LayerName);
     }
 
     [Fact]
-    public void TreeNamePrefix_IsStrom()
+    public void TreeNamePrefix_IsTree()
     {
-        Assert.Equal("Strom", TreeDatabaseNaming.TreeNamePrefix);
+        Assert.Equal("Tree", TreeDatabaseNaming.TreeNamePrefix);
     }
 
     // --- GetTreeName ---
 
     [Theory]
-    [InlineData(0, "Strom0")]
-    [InlineData(1, "Strom1")]
-    [InlineData(5, "Strom5")]
-    [InlineData(99, "Strom99")]
+    [InlineData(0, "Tree0")]
+    [InlineData(1, "Tree1")]
+    [InlineData(5, "Tree5")]
+    [InlineData(99, "Tree99")]
     public void GetTreeName_CorrectFormat(int index, string expected)
     {
         Assert.Equal(expected, TreeDatabaseNaming.GetTreeName(index));
@@ -43,30 +43,30 @@ public class TreeDatabaseNamingTests
     [Fact]
     public void GetTreeCompanionPointName_CorrectFormat()
     {
-        // "Strom0" + "-point(RoadCreator)"
-        Assert.Equal("Strom0-point(RoadCreator)",
+        // "Tree0" + "-point(RoadCreator)"
+        Assert.Equal("Tree0-point(RoadCreator)",
             TreeDatabaseNaming.GetTreeCompanionPointName(0));
     }
 
     [Fact]
     public void GetTreeCompanionPointName_Index5()
     {
-        Assert.Equal("Strom5-point(RoadCreator)",
+        Assert.Equal("Tree5-point(RoadCreator)",
             TreeDatabaseNaming.GetTreeCompanionPointName(5));
     }
 
     // --- IsTreeName ---
 
     [Theory]
-    [InlineData("Strom0", true)]
-    [InlineData("Strom1", true)]
-    [InlineData("Strom99", true)]
-    [InlineData("Strom", false)]       // No index
-    [InlineData("strom0", false)]      // Wrong case
-    [InlineData("Tree0", false)]       // Wrong prefix
-    [InlineData("Strom0-point(RoadCreator)", false)]  // Companion name
+    [InlineData("Tree0", true)]
+    [InlineData("Tree1", true)]
+    [InlineData("Tree99", true)]
+    [InlineData("Tree", false)]        // No index
+    [InlineData("tree0", false)]       // Wrong case
+    [InlineData("Strom0", false)]      // Wrong prefix
+    [InlineData("Tree0-point(RoadCreator)", false)]  // Companion name
     [InlineData("", false)]
-    [InlineData("StromABC", false)]    // Non-numeric suffix
+    [InlineData("TreeABC", false)]     // Non-numeric suffix
     public void IsTreeName_CorrectResults(string name, bool expected)
     {
         Assert.Equal(expected, TreeDatabaseNaming.IsTreeName(name));
@@ -75,9 +75,9 @@ public class TreeDatabaseNamingTests
     // --- ParseTreeIndex ---
 
     [Theory]
-    [InlineData("Strom0", 0)]
-    [InlineData("Strom1", 1)]
-    [InlineData("Strom42", 42)]
+    [InlineData("Tree0", 0)]
+    [InlineData("Tree1", 1)]
+    [InlineData("Tree42", 42)]
     public void ParseTreeIndex_ValidNames(string name, int expected)
     {
         Assert.Equal(expected, TreeDatabaseNaming.ParseTreeIndex(name));
@@ -85,9 +85,9 @@ public class TreeDatabaseNamingTests
 
     [Theory]
     [InlineData("")]
-    [InlineData("Tree0")]
-    [InlineData("Strom")]
-    [InlineData("StromABC")]
+    [InlineData("Strom0")]
+    [InlineData("Tree")]
+    [InlineData("TreeABC")]
     public void ParseTreeIndex_InvalidNames_ReturnsMinusOne(string name)
     {
         Assert.Equal(-1, TreeDatabaseNaming.ParseTreeIndex(name));

@@ -23,6 +23,11 @@ public class RoadCreatorPlugin : global::Rhino.PlugIns.PlugIn
 
     protected override global::Rhino.PlugIns.LoadReturnCode OnLoad(ref string errorMessage)
     {
+        // Restore persisted external database path
+        var dbPath = Settings.GetString("ExternalDatabasePath", "");
+        if (!string.IsNullOrEmpty(dbPath))
+            Database.ExternalDatabase.Path = dbPath;
+
         global::Rhino.RhinoApp.WriteLine("RoadCreator plugin loaded.");
         return global::Rhino.PlugIns.LoadReturnCode.Success;
     }

@@ -146,15 +146,15 @@ public class TrafficSignCatalogTests
     // --- Constants ---
 
     [Fact]
-    public void PlacementLayerName_IsZnacky()
+    public void PlacementLayerName_IsTrafficSigns()
     {
-        Assert.Equal("Znacky", TrafficSignCatalog.PlacementLayerName);
+        Assert.Equal("Traffic Signs", TrafficSignCatalog.PlacementLayerName);
     }
 
     [Fact]
-    public void PlacedSignName_IsZnacka()
+    public void PlacedSignName_IsTrafficSign()
     {
-        Assert.Equal("Znacka", TrafficSignCatalog.PlacedSignName);
+        Assert.Equal("TrafficSign", TrafficSignCatalog.PlacedSignName);
     }
 
     [Fact]

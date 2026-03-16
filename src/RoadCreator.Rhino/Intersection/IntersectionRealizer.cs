@@ -246,6 +246,7 @@ public sealed class IntersectionRealizer
                         request.AnalysisToken,
                         "realized_boundary",
                         "planar_boundary_curve");
+                    ApplyPersistentIntersectionRecord(boundaryAttrs, request, "realized_boundary");
                     var boundaryId = doc.Objects.AddCurve(realizedBoundary, boundaryAttrs);
                     if (boundaryId == Guid.Empty)
                         throw new InvalidOperationException("Failed to add realized boundary");
@@ -261,6 +262,7 @@ public sealed class IntersectionRealizer
                         request.AnalysisToken,
                         "realized_surface",
                         "planar_surface_patch");
+                    ApplyPersistentIntersectionRecord(surfaceAttrs, request, "realized_surface");
                     var surfaceId = doc.Objects.AddBrep(realizedSurface, surfaceAttrs);
                     if (surfaceId == Guid.Empty)
                         throw new InvalidOperationException("Failed to add realized surface");
@@ -430,6 +432,37 @@ public sealed class IntersectionRealizer
         attrs.SetUserString("rook_intersection_artifact_role", artifactRole);
         attrs.SetUserString("rook_intersection_artifact_kind", artifactKind);
         return attrs;
+    }
+
+    private static void ApplyPersistentIntersectionRecord(
+        ObjectAttributes attrs,
+        IntersectionRealizationRequest request,
+        string artifactRole)
+    {
+        var recordJson = JsonSerializer.Serialize(new
+        {
+            schema = "roadcreator.intersection-record/v1",
+            analysisToken = request.AnalysisToken,
+            analysisStage = request.AnalysisStage,
+            targetLayerRoot = request.TargetLayerRoot,
+            realizationMode = request.RealizationMode,
+            candidateId = request.SelectedCandidate?.CandidateId,
+            artifactRole,
+            sourceRoads = request.SourceRoads.Select(static road => new
+            {
+                road = road.Road,
+                centerlineId = road.CenterlineId,
+                profileName = road.ProfileName,
+                requiresSideSelection = road.RequiresSideSelection,
+                resolvedSide = road.ResolvedSide,
+            }),
+        });
+
+        attrs.SetUserString("rook_intersection_record_schema", "roadcreator.intersection-record/v1");
+        attrs.SetUserString("rook_intersection_record", recordJson);
+        if (!string.IsNullOrWhiteSpace(request.SelectedCandidate?.CandidateId))
+            attrs.SetUserString("rook_intersection_candidate_id", request.SelectedCandidate!.CandidateId);
+        attrs.SetUserString("rook_intersection_target_layer_root", request.TargetLayerRoot);
     }
 
     private static IEnumerable<ApproachEdgeSegment> BuildApproachEdgeSegments(

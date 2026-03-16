@@ -6,6 +6,7 @@ using global::Rhino.Input;
 using global::Rhino.Input.Custom;
 using RoadCreator.Core.Accessories;
 using RoadCreator.Core.Localization;
+using RoadCreator.Rhino.Database;
 using RoadCreator.Rhino.Layers;
 
 namespace RoadCreator.Rhino.Commands.Accessories;
@@ -33,57 +34,66 @@ public class DatabaseRetrieveCommand : Command
     {
         var layers = new LayerManager(doc);
         string dbPath = LayerScheme.BuildPath(LayerScheme.Database);
-        int dbLayerIdx = doc.Layers.FindByFullPath(dbPath, -1);
 
-        if (dbLayerIdx < 0)
+        // Collect available names — external database or document layers
+        string[] nameList;
+        if (ExternalDatabase.IsEnabled)
         {
-            RhinoApp.WriteLine(Strings.DatabaseEmpty);
-            return Result.Failure;
+            nameList = ExternalDatabase.ListTemplateNames(LayerScheme.Database);
+            if (nameList.Length == 0)
+            {
+                RhinoApp.WriteLine(Strings.DatabaseEmpty);
+                return Result.Failure;
+            }
         }
-
-        // Unlock and show database layer temporarily
-        var dbLayer = doc.Layers[dbLayerIdx];
-        dbLayer.IsLocked = false;
-        dbLayer.IsVisible = true;
-        doc.Layers.Modify(dbLayer, dbLayerIdx, true);
-
-        // Collect unique object names (exclude points and companion point names)
-        var layerObjects = doc.Objects.FindByLayer(dbLayer);
-        if (layerObjects == null || layerObjects.Length == 0)
+        else
         {
-            RhinoApp.WriteLine(Strings.DatabaseEmpty);
+            int dbLayerIdx = doc.Layers.FindByFullPath(dbPath, -1);
+            if (dbLayerIdx < 0)
+            {
+                RhinoApp.WriteLine(Strings.DatabaseEmpty);
+                return Result.Failure;
+            }
+
+            var dbLayer = doc.Layers[dbLayerIdx];
+            dbLayer.IsLocked = false;
+            dbLayer.IsVisible = true;
+            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+
+            var layerObjects = doc.Objects.FindByLayer(dbLayer);
+            if (layerObjects == null || layerObjects.Length == 0)
+            {
+                RhinoApp.WriteLine(Strings.DatabaseEmpty);
+                layers.LockLayer(dbPath);
+                layers.SetLayerVisible(dbPath, false);
+                return Result.Failure;
+            }
+
+            var objectNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var obj in layerObjects)
+            {
+                if (obj.Geometry is global::Rhino.Geometry.Point) continue;
+                var name = obj.Attributes.Name;
+                if (string.IsNullOrEmpty(name)) continue;
+                if (DatabaseNaming.IsCompanionPointName(name)) continue;
+                objectNames.Add(name);
+            }
+
+            if (objectNames.Count == 0)
+            {
+                RhinoApp.WriteLine(Strings.DatabaseNoNamedObjects);
+                layers.LockLayer(dbPath);
+                layers.SetLayerVisible(dbPath, false);
+                return Result.Failure;
+            }
+
             layers.LockLayer(dbPath);
             layers.SetLayerVisible(dbPath, false);
-            return Result.Failure;
+
+            nameList = objectNames.ToArray();
         }
 
-        var objectNames = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var obj in layerObjects)
-        {
-            if (obj.Geometry is global::Rhino.Geometry.Point) continue;
-            var name = obj.Attributes.Name;
-            if (string.IsNullOrEmpty(name)) continue;
-            if (DatabaseNaming.IsCompanionPointName(name)) continue;
-            objectNames.Add(name);
-        }
-
-        if (objectNames.Count == 0)
-        {
-            RhinoApp.WriteLine(Strings.DatabaseNoNamedObjects);
-            layers.LockLayer(dbPath);
-            layers.SetLayerVisible(dbPath, false);
-            return Result.Failure;
-        }
-
-        // Lock and hide database layer for selection UI
-        layers.LockLayer(dbPath);
-        layers.SetLayerVisible(dbPath, false);
-
-        // Present selection via command-line options.
-        // Rhino GetOption doesn't support spaces in option names, so we replace
-        // spaces with underscores for display but use the index to look up the
-        // original name from the array.
-        var nameList = objectNames.ToArray();
+        // Present selection via command-line options
         var getChoice = new GetOption();
         getChoice.SetCommandPrompt("Select object from database");
         foreach (var name in nameList)
@@ -125,41 +135,65 @@ public class DatabaseRetrieveCommand : Command
 
         try
         {
-            // Unlock database to read objects
-            dbLayer = doc.Layers[dbLayerIdx];
-            dbLayer.IsLocked = false;
-            dbLayer.IsVisible = true;
-            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+            // Get geometries + base point — external or document
+            GeometryBase[] geometries;
+            Point3d basePoint;
 
-            // Find companion point for base position
-            string companionName = DatabaseNaming.GetCompanionPointName(selectedName);
-            var companionSettings = new ObjectEnumeratorSettings
+            if (ExternalDatabase.IsEnabled)
             {
-                LayerIndexFilter = dbLayerIdx,
-                NameFilter = companionName,
-            };
-            Point3d basePoint = Point3d.Origin;
-            foreach (var ptObj in doc.Objects.GetObjectList(companionSettings))
-            {
-                if (ptObj.Geometry is global::Rhino.Geometry.Point pt)
+                var result = ExternalDatabase.FindObjectsByName(LayerScheme.Database, selectedName);
+                if (result == null)
                 {
-                    basePoint = pt.Location;
-                    break;
+                    RhinoApp.WriteLine(Strings.DatabaseEmpty);
+                    return Result.Failure;
                 }
+                geometries = result.Value.Geometries;
+                basePoint = result.Value.BasePoint;
             }
+            else
+            {
+                int dbLayerIdx = doc.Layers.FindByFullPath(dbPath, -1);
+                var dbLayer = doc.Layers[dbLayerIdx];
+                dbLayer.IsLocked = false;
+                dbLayer.IsVisible = true;
+                doc.Layers.Modify(dbLayer, dbLayerIdx, true);
 
-            // Find all objects with the selected name
-            var sourceSettings = new ObjectEnumeratorSettings
-            {
-                LayerIndexFilter = dbLayerIdx,
-                NameFilter = selectedName,
-            };
-            var sourceObjects = doc.Objects.GetObjectList(sourceSettings).ToArray();
-            if (sourceObjects.Length == 0)
-            {
+                string companionName = DatabaseNaming.GetCompanionPointName(selectedName);
+                var companionSettings = new ObjectEnumeratorSettings
+                {
+                    LayerIndexFilter = dbLayerIdx,
+                    NameFilter = companionName,
+                };
+                basePoint = Point3d.Origin;
+                foreach (var ptObj in doc.Objects.GetObjectList(companionSettings))
+                {
+                    if (ptObj.Geometry is global::Rhino.Geometry.Point pt)
+                    {
+                        basePoint = pt.Location;
+                        break;
+                    }
+                }
+
+                var sourceSettings = new ObjectEnumeratorSettings
+                {
+                    LayerIndexFilter = dbLayerIdx,
+                    NameFilter = selectedName,
+                };
+                var sourceObjects = doc.Objects.GetObjectList(sourceSettings).ToArray();
+                if (sourceObjects.Length == 0)
+                {
+                    layers.LockLayer(dbPath);
+                    layers.SetLayerVisible(dbPath, false);
+                    return Result.Failure;
+                }
+
+                geometries = sourceObjects
+                    .Where(o => o.Geometry != null)
+                    .Select(o => o.Geometry!.Duplicate())
+                    .ToArray();
+
                 layers.LockLayer(dbPath);
                 layers.SetLayerVisible(dbPath, false);
-                return Result.Failure;
             }
 
             // Set up target layer
@@ -170,20 +204,15 @@ public class DatabaseRetrieveCommand : Command
 
             // Copy objects from base to placement point
             var copiedIds = new List<Guid>();
-            foreach (var srcObj in sourceObjects)
+            foreach (var geom in geometries)
             {
-                if (srcObj.Geometry == null) continue;
-                var copy = srcObj.Geometry.Duplicate();
+                var copy = geom.Duplicate();
                 copy.Transform(Transform.Translation(placementPt - basePoint));
                 targetAttrs.Name = selectedName + "-Objekt";
                 var id = doc.Objects.Add(copy, targetAttrs);
                 if (id != Guid.Empty)
                     copiedIds.Add(id);
             }
-
-            // Lock and hide database layer
-            layers.LockLayer(dbPath);
-            layers.SetLayerVisible(dbPath, false);
 
             // Re-enable redraw so user can see placed objects and pick rotation
             doc.Views.RedrawEnabled = true;
@@ -199,7 +228,6 @@ public class DatabaseRetrieveCommand : Command
                 double angle = System.Math.Atan2(
                     rotationPt.Y - placementPt.Y,
                     rotationPt.X - placementPt.X) * (180.0 / System.Math.PI);
-                // VBScript: angle(0) + 90
                 double rotation = angle + 90;
 
                 foreach (var id in copiedIds)

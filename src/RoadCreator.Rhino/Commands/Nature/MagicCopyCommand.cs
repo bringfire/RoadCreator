@@ -16,7 +16,7 @@ namespace RoadCreator.Rhino.Commands.Nature;
 /// Converts from Magiccopy.rvb / MagiccopyMesh.rvb (unified via ITerrain).
 ///
 /// Note: VBScript allows free object selection from the viewport. This C# version
-/// uses tree templates from the "Stromy databaze" layer instead, which requires
+/// uses tree templates from the "Tree Database" layer instead, which requires
 /// objects to be stored in the database first (via RC_TreeDatabaseInsert).
 /// Use RC_MagicCopyMulti for manual object selection without the database.
 ///

@@ -6,23 +6,21 @@ namespace RoadCreator.Core.Nature;
 ///
 /// The tree database uses the same companion-point convention as the
 /// general database (<see cref="Accessories.DatabaseNaming"/>), but stores
-/// objects on a separate standalone layer ("Stromy databaze") matching the
-/// original VBScript convention. This is distinct from the LayerScheme hierarchy
-/// ("RoadCreator::RC_Database::Trees") which exists as a fallback for future use.
+/// objects on a separate standalone layer ("Tree Database").
 ///
-/// Tree objects are named "Strom0", "Strom1", etc.
+/// Tree objects are named "Tree0", "Tree1", etc.
 /// </summary>
 public static class TreeDatabaseNaming
 {
     /// <summary>Layer name for the tree database.</summary>
-    public const string LayerName = "Stromy databaze";
+    public const string LayerName = "Tree Database";
 
     /// <summary>Prefix for tree object names.</summary>
-    public const string TreeNamePrefix = "Strom";
+    public const string TreeNamePrefix = "Tree";
 
     /// <summary>
     /// Build a tree object name from its index.
-    /// Example: 0 → "Strom0", 5 → "Strom5"
+    /// Example: 0 → "Tree0", 5 → "Tree5"
     /// </summary>
     public static string GetTreeName(int index)
     {
@@ -33,7 +31,7 @@ public static class TreeDatabaseNaming
 
     /// <summary>
     /// Build the companion point name for a tree.
-    /// Example: "Strom0" → "Strom0-point(RoadCreator)"
+    /// Example: "Tree0" → "Tree0-point(RoadCreator)"
     /// </summary>
     public static string GetTreeCompanionPointName(int index)
     {

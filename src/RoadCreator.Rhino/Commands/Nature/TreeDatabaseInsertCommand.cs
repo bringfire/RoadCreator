@@ -7,12 +7,13 @@ using global::Rhino.Input.Custom;
 using RoadCreator.Core.Accessories;
 using RoadCreator.Core.Localization;
 using RoadCreator.Core.Nature;
+using RoadCreator.Rhino.Database;
 using RoadCreator.Rhino.Layers;
 
 namespace RoadCreator.Rhino.Commands.Nature;
 
 /// <summary>
-/// Stores tree objects in the tree database layer ("Stromy databaze")
+/// Stores tree objects in the tree database layer ("Tree Database")
 /// with a companion base point.
 /// Converts from StromDatabazevlozit.rvb.
 ///
@@ -28,16 +29,22 @@ public class TreeDatabaseInsertCommand : Command
     {
         var layers = new LayerManager(doc);
 
-        // Ensure tree database layer exists
-        int dbLayerIdx = layers.EnsureLayer(TreeDatabaseNaming.LayerName,
-            System.Drawing.Color.FromArgb(0, 0, 0));
-
-        // Collect existing names to prevent duplicates
-        var existingNames = CollectExistingNames(doc, dbLayerIdx);
-
-        // Lock and hide database layer after scanning
-        layers.LockLayer(TreeDatabaseNaming.LayerName);
-        layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
+        // Collect existing names to check for duplicates
+        HashSet<string> existingNames;
+        if (ExternalDatabase.IsEnabled)
+        {
+            existingNames = new HashSet<string>(
+                ExternalDatabase.ListTemplateNames(TreeDatabaseNaming.LayerName),
+                StringComparer.Ordinal);
+        }
+        else
+        {
+            int dbLayerIdx = layers.EnsureLayer(TreeDatabaseNaming.LayerName,
+                System.Drawing.Color.FromArgb(0, 0, 0));
+            existingNames = CollectExistingNames(doc, dbLayerIdx);
+            layers.LockLayer(TreeDatabaseNaming.LayerName);
+            layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
+        }
 
         // Select objects
         var getObjects = new GetObject();
@@ -77,38 +84,66 @@ public class TreeDatabaseInsertCommand : Command
 
         try
         {
-            // Unlock database layer for modification
-            var dbLayer = doc.Layers[dbLayerIdx];
-            dbLayer.IsLocked = false;
-            dbLayer.IsVisible = true;
-            doc.Layers.Modify(dbLayer, dbLayerIdx, true);
-
-            // Create companion point
-            var companionName = DatabaseNaming.GetCompanionPointName(treeName);
-            var pointId = doc.Objects.AddPoint(basePoint);
-            var pointObj = doc.Objects.FindId(pointId);
-            if (pointObj != null)
+            if (ExternalDatabase.IsEnabled)
             {
-                var ptAttrs = pointObj.Attributes;
-                ptAttrs.Name = companionName;
-                ptAttrs.LayerIndex = dbLayerIdx;
-                doc.Objects.ModifyAttributes(pointId, ptAttrs, true);
-            }
+                // Gather geometry from selected objects
+                var geometries = new List<GeometryBase>();
+                foreach (var objId in objectIds)
+                {
+                    var obj = doc.Objects.FindId(objId);
+                    if (obj?.Geometry == null) continue;
+                    geometries.Add(obj.Geometry.Duplicate());
+                }
 
-            // Set name and layer for all selected objects
-            foreach (var objId in objectIds)
+                if (geometries.Count == 0)
+                    return Result.Failure;
+
+                bool ok = ExternalDatabase.InsertTemplate(
+                    TreeDatabaseNaming.LayerName, treeName, geometries.ToArray(), basePoint);
+                if (!ok)
+                {
+                    RhinoApp.WriteLine("Failed to write to external database.");
+                    return Result.Failure;
+                }
+            }
+            else
             {
-                var obj = doc.Objects.FindId(objId);
-                if (obj == null) continue;
-                var objAttrs = obj.Attributes;
-                objAttrs.Name = treeName;
-                objAttrs.LayerIndex = dbLayerIdx;
-                doc.Objects.ModifyAttributes(objId, objAttrs, true);
-            }
+                int dbLayerIdx = layers.EnsureLayer(TreeDatabaseNaming.LayerName,
+                    System.Drawing.Color.FromArgb(0, 0, 0));
 
-            // Lock and hide database layer
-            layers.LockLayer(TreeDatabaseNaming.LayerName);
-            layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
+                // Unlock database layer for modification
+                var dbLayer = doc.Layers[dbLayerIdx];
+                dbLayer.IsLocked = false;
+                dbLayer.IsVisible = true;
+                doc.Layers.Modify(dbLayer, dbLayerIdx, true);
+
+                // Create companion point
+                var companionName = DatabaseNaming.GetCompanionPointName(treeName);
+                var pointId = doc.Objects.AddPoint(basePoint);
+                var pointObj = doc.Objects.FindId(pointId);
+                if (pointObj != null)
+                {
+                    var ptAttrs = pointObj.Attributes;
+                    ptAttrs.Name = companionName;
+                    ptAttrs.LayerIndex = dbLayerIdx;
+                    doc.Objects.ModifyAttributes(pointId, ptAttrs, true);
+                }
+
+                // Set name and layer for all selected objects
+                foreach (var objId in objectIds)
+                {
+                    var obj = doc.Objects.FindId(objId);
+                    if (obj == null) continue;
+                    var objAttrs = obj.Attributes;
+                    objAttrs.Name = treeName;
+                    objAttrs.LayerIndex = dbLayerIdx;
+                    doc.Objects.ModifyAttributes(objId, objAttrs, true);
+                }
+
+                // Lock and hide database layer
+                layers.LockLayer(TreeDatabaseNaming.LayerName);
+                layers.SetLayerVisible(TreeDatabaseNaming.LayerName, false);
+            }
 
             RhinoApp.WriteLine(Strings.TreeDatabaseInsertDone);
         }
