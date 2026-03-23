@@ -1,8 +1,10 @@
 # RoadCreator
 
+> **Credit where credit is due.** This project is a conversion of the original [RoadCreator for Rhino](https://www.food4rhino.com/en/app/roadcreator-rhino) scripts by **adaorlicky_1**. All design concepts, algorithms, and road-engineering workflows originate from their work. We are grateful they shared the code and permitted us to create this plugin version. **This is not our original work** — we simply restructured and ported the existing VBScript macros into a compiled C# plugin.
+
 A Rhino 8 plugin for road design, providing 50 commands (`RC_*`) that cover the full workflow from horizontal/vertical alignment through 3D road surfaces, terrain analysis, accessories, and landscaping.
 
-Built as a C# (.NET 7.0) RhinoCommon plugin. Originally converted from a collection of VBScript macros into a structured, testable codebase with a shared computation core (`RoadCreator.Core`) and a Rhino-specific layer (`RoadCreator.Rhino`).
+Built as a C# (.NET 7.0) RhinoCommon plugin. Converted from the original VBScript macro collection into a structured, testable codebase with a shared computation core (`RoadCreator.Core`) and a Rhino-specific layer (`RoadCreator.Rhino`).
 
 ## Features
 
