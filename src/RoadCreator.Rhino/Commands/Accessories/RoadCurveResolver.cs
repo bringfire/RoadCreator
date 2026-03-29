@@ -1,4 +1,5 @@
 using global::Rhino;
+using global::Rhino.DocObjects;
 using global::Rhino.Geometry;
 using RoadCreator.Rhino;
 using RoadCreator.Rhino.Layers;
@@ -6,11 +7,33 @@ using RoadCreator.Rhino.Layers;
 namespace RoadCreator.Rhino.Commands.Accessories;
 
 /// <summary>
+/// Result of boundary object resolution, carrying both geometry and document identity.
+/// </summary>
+public sealed class ResolvedBoundary
+{
+    public RhinoObject Object { get; }
+    public Curve Curve { get; }
+    public Guid ObjectId => Object.Id;
+    public string? RoadName { get; }
+
+    public ResolvedBoundary(RhinoObject obj, Curve curve, string? roadName)
+    {
+        Object = obj;
+        Curve = curve;
+        RoadName = roadName;
+    }
+}
+
+/// <summary>
 /// Resolve commonly used road curves from the document for scripted accessory commands.
 /// </summary>
-internal static class RoadCurveResolver
+public static class RoadCurveResolver
 {
-    public static Curve? ResolveNearestBoundaryCurve(
+    /// <summary>
+    /// Find the nearest boundary curve to a reference point, returning the full
+    /// RhinoObject so callers can derive ObjectId and road name.
+    /// </summary>
+    public static ResolvedBoundary? ResolveNearestBoundaryObject(
         RhinoDoc doc, string roadName, Point3d referencePoint)
     {
         foreach (var layerPath in new[]
@@ -27,6 +50,7 @@ internal static class RoadCurveResolver
             if (objects == null || objects.Length == 0)
                 continue;
 
+            RhinoObject? bestObj = null;
             Curve? bestCurve = null;
             double bestDistance = double.MaxValue;
 
@@ -46,15 +70,22 @@ internal static class RoadCurveResolver
                 if (distance < bestDistance)
                 {
                     bestDistance = distance;
+                    bestObj = obj;
                     bestCurve = curve;
                 }
             }
 
-            if (bestCurve != null)
-                return bestCurve;
+            if (bestObj != null && bestCurve != null)
+                return new ResolvedBoundary(bestObj, bestCurve, roadName);
         }
 
         return null;
+    }
+
+    public static Curve? ResolveNearestBoundaryCurve(
+        RhinoDoc doc, string roadName, Point3d referencePoint)
+    {
+        return ResolveNearestBoundaryObject(doc, roadName, referencePoint)?.Curve;
     }
 
     public static Curve[] ResolveBoundaryCurves(RhinoDoc doc, string roadName)
