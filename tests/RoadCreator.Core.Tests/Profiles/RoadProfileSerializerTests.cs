@@ -332,4 +332,148 @@ public class RoadProfileSerializerTests
 
         Assert.Null(result);
     }
+
+    // ── Builder-shape compatibility tests ────────────────────────────────
+
+    private const string BuilderShapeJson = """
+        {
+          "schema": "roadcreator.road-profile/v1",
+          "name": "urban_two_lane",
+          "units": "m",
+          "symmetric": true,
+          "baseline": "centerline",
+          "features": [
+            { "id": "cl", "role": "centerline_reference", "offset": 0.0, "styleRef": "centerline" },
+            { "id": "eop_l", "role": "edge_of_pavement", "offset": -3.5, "side": "left", "styleRef": "edge" },
+            { "id": "eop_r", "role": "edge_of_pavement", "offset": 3.5, "side": "right", "styleRef": "edge" },
+            { "id": "curb_l", "type": "curb_face", "offset": -3.8, "side": "left", "styleRef": "curb" },
+            { "id": "curb_r", "type": "curb_face", "offset": 3.8, "side": "right", "styleRef": "curb" },
+            { "id": "sw_l", "role": "sidewalk_outer", "offset": -5.8, "side": "left", "styleRef": "sidewalk" },
+            { "id": "sw_r", "role": "sidewalk_outer", "offset": 5.8, "side": "right", "styleRef": "sidewalk" }
+          ],
+          "surfaces": [
+            { "id": "carriageway", "between": ["eop_l", "eop_r"], "type": "pavement" },
+            { "id": "sw_left", "between": ["curb_l", "sw_l"], "type": "sidewalk", "crossfall": 0.02 }
+          ],
+          "elements": [
+            { "id": "curb_left", "type": "curb", "at": "curb_l", "side": "left", "height": 0.2, "topWidth": 0.3 },
+            { "id": "guardrail_right", "type": "guardrail", "at": "eop_r", "side": "right", "postSpacing": 4.0 }
+          ]
+        }
+        """;
+
+    [Fact]
+    public void Deserialize_BuilderShape_ParsesFeaturesSurfacesElements()
+    {
+        var profile = RoadProfileSerializer.Deserialize(BuilderShapeJson);
+
+        Assert.NotNull(profile);
+        Assert.Equal("urban_two_lane", profile!.Name);
+        Assert.Equal("centerline", profile.Baseline);
+        Assert.Equal(7, profile.Features.Count);
+
+        // "role" alias resolves to Type
+        Assert.Equal("centerline_reference", profile.Features[0].Type);
+        Assert.Equal("edge_of_pavement", profile.Features[1].Type);
+
+        // StyleRef and Side are preserved
+        Assert.Equal("centerline", profile.Features[0].StyleRef);
+        Assert.Equal("left", profile.Features[1].Side);
+        Assert.Equal("right", profile.Features[2].Side);
+        Assert.Null(profile.Features[0].Side); // centerline has no side
+
+        // Surfaces
+        Assert.Equal(2, profile.Surfaces.Count);
+        Assert.Equal("carriageway", profile.Surfaces[0].Id);
+        Assert.Equal(new List<string> { "eop_l", "eop_r" }, profile.Surfaces[0].Between);
+        Assert.Equal("pavement", profile.Surfaces[0].Type);
+        Assert.Null(profile.Surfaces[0].Crossfall);
+        Assert.Equal(0.02, profile.Surfaces[1].Crossfall);
+
+        // Elements
+        Assert.Equal(2, profile.Elements.Count);
+        Assert.Equal("curb", profile.Elements[0].Type);
+        Assert.Equal("curb_l", profile.Elements[0].At);
+        Assert.Equal(0.2, profile.Elements[0].Height);
+        Assert.Equal(0.3, profile.Elements[0].TopWidth);
+        Assert.Equal("guardrail", profile.Elements[1].Type);
+        Assert.Equal(4.0, profile.Elements[1].PostSpacing);
+    }
+
+    [Fact]
+    public void Deserialize_BuilderShape_PreservesExistingSummarySemantics()
+    {
+        var profile = RoadProfileSerializer.Deserialize(BuilderShapeJson)!;
+        var summary = RoadProfileSummaryBuilder.Build(profile);
+
+        // Summary still works — edge_of_pavement resolves to EdgeOfPavement offset
+        Assert.Equal(3.5, summary.EdgeOfPavementOffset, 1e-10);
+        Assert.Equal(3.8, summary.CurbReturnDriverOffset, 1e-10);
+        Assert.Equal(5.8, summary.OuterEnvelopeOffset, 1e-10);
+    }
+
+    [Fact]
+    public void Serialize_BuilderShape_RoundTripsSurfacesAndElements()
+    {
+        var profile = RoadProfileSerializer.Deserialize(BuilderShapeJson)!;
+        var json = RoadProfileSerializer.Serialize(profile);
+        var restored = RoadProfileSerializer.Deserialize(json);
+
+        Assert.NotNull(restored);
+        Assert.Equal(2, restored!.Surfaces.Count);
+        Assert.Equal(2, restored.Elements.Count);
+        Assert.Equal("pavement", restored.Surfaces[0].Type);
+        Assert.Equal("curb", restored.Elements[0].Type);
+        Assert.Equal(0.2, restored.Elements[0].Height);
+        Assert.Equal("edge", restored.Features[1].StyleRef);
+        Assert.Equal("left", restored.Features[1].Side);
+    }
+
+    [Fact]
+    public void Deserialize_ExistingNativeShape_StillWorksWithNewFields()
+    {
+        // Existing JSON has no surfaces, elements, baseline, styleRef, side
+        // Must still parse correctly with empty defaults
+        var profile = RoadProfileSerializer.Deserialize(ArterialWithBikeLanesJson)!;
+
+        Assert.Equal("centerline", profile.Baseline);
+        Assert.Empty(profile.Surfaces);
+        Assert.Empty(profile.Elements);
+        Assert.Null(profile.Features[0].StyleRef);
+        Assert.Null(profile.Features[0].Side);
+    }
+
+    [Fact]
+    public void Deserialize_DesignVocabulary_NormalizesToCanonicalTypes()
+    {
+        // Design doc uses: centerline, sidewalk_back, right_of_way
+        // These must normalize to: centerline_reference, sidewalk_outer, row
+        var json = """
+            {
+              "name": "design_vocab_test",
+              "features": [
+                { "id": "cl", "role": "centerline", "offset": 0.0 },
+                { "id": "eop", "role": "edge_of_pavement", "offset": 3.5 },
+                { "id": "sw", "role": "sidewalk_back", "offset": 5.8 },
+                { "id": "row", "role": "right_of_way", "offset": 10.0 },
+                { "id": "sh", "role": "shoulder_edge", "offset": 4.5 },
+                { "id": "ld", "role": "lane_divider", "offset": 0.0 }
+              ]
+            }
+            """;
+
+        var profile = RoadProfileSerializer.Deserialize(json)!;
+
+        Assert.Equal(RoadProfileFeatureTypes.CenterlineReference, profile.Features[0].Type);
+        Assert.Equal(RoadProfileFeatureTypes.EdgeOfPavement, profile.Features[1].Type);
+        Assert.Equal(RoadProfileFeatureTypes.SidewalkOuter, profile.Features[2].Type);
+        Assert.Equal(RoadProfileFeatureTypes.RightOfWay, profile.Features[3].Type);
+        Assert.Equal(RoadProfileFeatureTypes.ShoulderEdge, profile.Features[4].Type);
+        Assert.Equal(RoadProfileFeatureTypes.LaneDivider, profile.Features[5].Type);
+
+        // Boundary role inference still works through normalized types
+        var summary = RoadProfileSummaryBuilder.Build(profile);
+        Assert.Equal(3.5, summary.EdgeOfPavementOffset, 1e-10);
+        Assert.Equal(10.0, summary.OuterEnvelopeOffset, 1e-10);
+    }
 }

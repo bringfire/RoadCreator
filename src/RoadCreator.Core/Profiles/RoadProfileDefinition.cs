@@ -17,9 +17,27 @@ public static class RoadProfileFeatureTypes
     public const string SidewalkInner = "sidewalk_inner";
     public const string SidewalkOuter = "sidewalk_outer";
     public const string MedianEdge = "median_edge";
+    public const string LaneDivider = "lane_divider";
+    public const string ShoulderEdge = "shoulder_edge";
     public const string RightOfWay = "row";
     public const string Ditch = "ditch";
     public const string Custom = "custom";
+}
+
+public static class ProfileSurfaceTypes
+{
+    public const string Pavement = "pavement";
+    public const string Sidewalk = "sidewalk";
+    public const string Median = "median";
+    public const string Shoulder = "shoulder";
+}
+
+public static class ProfileElementTypes
+{
+    public const string Curb = "curb";
+    public const string Guardrail = "guardrail";
+    public const string Barrier = "barrier";
+    public const string Ditch = "ditch";
 }
 
 public static class RoadProfileBoundaryRoles
@@ -39,9 +57,12 @@ public sealed class RoadProfileDefinition
     public string Units { get; init; } = "m";
     public string Description { get; init; } = "";
     public bool Symmetric { get; init; } = true;
+    public string Baseline { get; init; } = "centerline";
     public double? TotalWidth { get; init; }
     public RoadProfileSourceMetadata? Source { get; init; }
     public List<RoadProfileFeatureDefinition> Features { get; init; } = new();
+    public List<ProfileSurface> Surfaces { get; init; } = new();
+    public List<ProfileElement> Elements { get; init; } = new();
     public Dictionary<string, string> LayerMap { get; init; } = new();
     public List<string> Tags { get; init; } = new();
     public RoadProfileCrossSectionDefaults? CrossSectionDefaults { get; init; }
@@ -73,8 +94,40 @@ public sealed class RoadProfileFeatureDefinition
     public bool Bilateral { get; init; } = true;
     public string Label { get; init; } = "";
     public string? Baseline { get; init; }
+    public string? StyleRef { get; init; }
+    public string? Side { get; init; }
     public List<string> BoundaryRoles { get; init; } = new();
     public bool EligibleForIntersectionTopology { get; init; }
+}
+
+public sealed class ProfileSurface
+{
+    public string Id { get; init; } = "";
+    public List<string> Between { get; init; } = new();
+    public string Type { get; init; } = "";
+    public double? Crossfall { get; init; }
+}
+
+public sealed class ProfileElement
+{
+    public string Id { get; init; } = "";
+    public string Type { get; init; } = "";
+    public string At { get; init; } = "";
+    public string? Side { get; init; }
+
+    // Curb-specific
+    public double? Height { get; init; }
+    public double? TopWidth { get; init; }
+
+    // Guardrail-specific
+    public double? PostSpacing { get; init; }
+
+    // Barrier-specific
+    public string? Variant { get; init; }
+
+    // Ditch-specific
+    public double? Depth { get; init; }
+    public double? Width { get; init; }
 }
 
 public sealed class RoadProfileSourceMetadata
