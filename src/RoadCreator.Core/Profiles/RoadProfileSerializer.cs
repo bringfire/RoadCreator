@@ -64,8 +64,17 @@ public static class RoadProfileSerializer
         [JsonPropertyName("source")]
         public SourceDto? Source { get; set; }
 
+        [JsonPropertyName("baseline")]
+        public string? Baseline { get; set; }
+
         [JsonPropertyName("features")]
         public List<FeatureDto> Features { get; set; } = new();
+
+        [JsonPropertyName("surfaces")]
+        public List<SurfaceDto> Surfaces { get; set; } = new();
+
+        [JsonPropertyName("elements")]
+        public List<ElementDto> Elements { get; set; } = new();
 
         [JsonPropertyName("layerMap")]
         public Dictionary<string, string> LayerMap { get; set; } = new();
@@ -87,9 +96,16 @@ public static class RoadProfileSerializer
             Units = profile.Units,
             Description = profile.Description,
             Symmetric = profile.Symmetric,
+            Baseline = profile.Baseline == "centerline" ? null : profile.Baseline,
             TotalWidth = profile.TotalWidth,
             Source = SourceDto.From(profile.Source),
             Features = profile.Features.Select(FeatureDto.From).ToList(),
+            Surfaces = profile.Surfaces.Count > 0
+                ? profile.Surfaces.Select(SurfaceDto.From).ToList()
+                : null!,
+            Elements = profile.Elements.Count > 0
+                ? profile.Elements.Select(ElementDto.From).ToList()
+                : null!,
             LayerMap = new Dictionary<string, string>(profile.LayerMap, StringComparer.Ordinal),
             Tags = profile.Tags.ToList(),
             CrossSectionDefaults = CrossSectionDefaultsDto.From(profile.CrossSectionDefaults),
@@ -104,7 +120,7 @@ public static class RoadProfileSerializer
             for (int index = 0; index < Features.Count; index++)
             {
                 var dto = Features[index];
-                var type = string.IsNullOrWhiteSpace(dto.Type) ? RoadProfileFeatureTypes.Custom : dto.Type.Trim();
+                var type = string.IsNullOrWhiteSpace(dto.ResolvedType) ? RoadProfileFeatureTypes.Custom : dto.ResolvedType.Trim();
 
                 if (!typeCounts.TryGetValue(type, out var currentCount))
                     currentCount = 0;
@@ -127,6 +143,8 @@ public static class RoadProfileSerializer
                     Bilateral = dto.Bilateral ?? true,
                     Label = dto.Label?.Trim() ?? "",
                     Baseline = string.IsNullOrWhiteSpace(dto.Baseline) ? null : dto.Baseline.Trim(),
+                    StyleRef = string.IsNullOrWhiteSpace(dto.StyleRef) ? null : dto.StyleRef!.Trim(),
+                    Side = string.IsNullOrWhiteSpace(dto.Side) ? null : dto.Side!.Trim(),
                     BoundaryRoles = boundaryRoles,
                     EligibleForIntersectionTopology =
                         dto.EligibleForIntersectionTopology ?? InferIntersectionEligibility(type),
@@ -141,9 +159,34 @@ public static class RoadProfileSerializer
                 Units = string.IsNullOrWhiteSpace(Units) ? "m" : Units!,
                 Description = Description?.Trim() ?? "",
                 Symmetric = Symmetric,
+                Baseline = string.IsNullOrWhiteSpace(Baseline) ? "centerline" : Baseline!.Trim(),
                 TotalWidth = TotalWidth,
                 Source = Source?.ToModel(),
                 Features = features,
+                Surfaces = (Surfaces ?? new())
+                    .Select(s => new ProfileSurface
+                    {
+                        Id = s.Id?.Trim() ?? "",
+                        Between = s.Between?.Where(b => !string.IsNullOrWhiteSpace(b)).ToList() ?? new(),
+                        Type = s.Type?.Trim() ?? "",
+                        Crossfall = s.Crossfall,
+                    })
+                    .ToList(),
+                Elements = (Elements ?? new())
+                    .Select(e => new ProfileElement
+                    {
+                        Id = e.Id?.Trim() ?? "",
+                        Type = e.Type?.Trim() ?? "",
+                        At = e.At?.Trim() ?? "",
+                        Side = string.IsNullOrWhiteSpace(e.Side) ? null : e.Side!.Trim(),
+                        Height = e.Height,
+                        TopWidth = e.TopWidth,
+                        PostSpacing = e.PostSpacing,
+                        Variant = e.Variant?.Trim(),
+                        Depth = e.Depth,
+                        Width = e.Width,
+                    })
+                    .ToList(),
                 LayerMap = new Dictionary<string, string>(LayerMap, StringComparer.Ordinal),
                 Tags = Tags.Where(tag => !string.IsNullOrWhiteSpace(tag)).ToList(),
                 CrossSectionDefaults = CrossSectionDefaults?.ToModel(),
@@ -198,6 +241,10 @@ public static class RoadProfileSerializer
         [JsonPropertyName("type")]
         public string? Type { get; set; }
 
+        /// <summary>Alias for "type" — accepted on input, normalized to Type.</summary>
+        [JsonPropertyName("role")]
+        public string? Role { get; set; }
+
         [JsonPropertyName("offset")]
         public double Offset { get; set; }
 
@@ -213,11 +260,47 @@ public static class RoadProfileSerializer
         [JsonPropertyName("baseline")]
         public string? Baseline { get; set; }
 
+        [JsonPropertyName("styleRef")]
+        public string? StyleRef { get; set; }
+
+        [JsonPropertyName("side")]
+        public string? Side { get; set; }
+
         [JsonPropertyName("boundaryRoles")]
         public List<string> BoundaryRoles { get; set; } = new();
 
         [JsonPropertyName("eligibleForIntersectionTopology")]
         public bool? EligibleForIntersectionTopology { get; set; }
+
+        /// <summary>
+        /// Resolve the effective feature type: "type" takes precedence, "role" is the alias.
+        /// Design-vocabulary aliases (e.g. "centerline", "sidewalk_back", "right_of_way")
+        /// are normalized to the canonical internal vocabulary.
+        /// </summary>
+        public string ResolvedType
+        {
+            get
+            {
+                var raw = !string.IsNullOrWhiteSpace(Type) ? Type!
+                    : !string.IsNullOrWhiteSpace(Role) ? Role!
+                    : "";
+                return NormalizeFeatureType(raw);
+            }
+        }
+
+        /// <summary>
+        /// Normalize design-vocabulary aliases to canonical feature type names.
+        /// Existing canonical names pass through unchanged.
+        /// </summary>
+        private static string NormalizeFeatureType(string raw) => raw.Trim() switch
+        {
+            "centerline" => RoadProfileFeatureTypes.CenterlineReference,
+            "sidewalk_back" => RoadProfileFeatureTypes.SidewalkOuter,
+            "right_of_way" => RoadProfileFeatureTypes.RightOfWay,
+            "shoulder_edge" => RoadProfileFeatureTypes.ShoulderEdge,
+            "lane_divider" => RoadProfileFeatureTypes.LaneDivider,
+            _ => raw.Trim(),
+        };
 
         public static FeatureDto From(RoadProfileFeatureDefinition feature) => new()
         {
@@ -229,8 +312,80 @@ public static class RoadProfileSerializer
             Bilateral = feature.Bilateral,
             Label = feature.Label,
             Baseline = feature.Baseline,
+            StyleRef = feature.StyleRef,
+            Side = feature.Side,
             BoundaryRoles = feature.BoundaryRoles.ToList(),
             EligibleForIntersectionTopology = feature.EligibleForIntersectionTopology,
+        };
+    }
+
+    private sealed class SurfaceDto
+    {
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
+
+        [JsonPropertyName("between")]
+        public List<string>? Between { get; set; }
+
+        [JsonPropertyName("type")]
+        public string? Type { get; set; }
+
+        [JsonPropertyName("crossfall")]
+        public double? Crossfall { get; set; }
+
+        public static SurfaceDto From(ProfileSurface surface) => new()
+        {
+            Id = surface.Id,
+            Between = surface.Between.ToList(),
+            Type = surface.Type,
+            Crossfall = surface.Crossfall,
+        };
+    }
+
+    private sealed class ElementDto
+    {
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
+
+        [JsonPropertyName("type")]
+        public string? Type { get; set; }
+
+        [JsonPropertyName("at")]
+        public string? At { get; set; }
+
+        [JsonPropertyName("side")]
+        public string? Side { get; set; }
+
+        [JsonPropertyName("height")]
+        public double? Height { get; set; }
+
+        [JsonPropertyName("topWidth")]
+        public double? TopWidth { get; set; }
+
+        [JsonPropertyName("postSpacing")]
+        public double? PostSpacing { get; set; }
+
+        [JsonPropertyName("variant")]
+        public string? Variant { get; set; }
+
+        [JsonPropertyName("depth")]
+        public double? Depth { get; set; }
+
+        [JsonPropertyName("width")]
+        public double? Width { get; set; }
+
+        public static ElementDto From(ProfileElement element) => new()
+        {
+            Id = element.Id,
+            Type = element.Type,
+            At = element.At,
+            Side = element.Side,
+            Height = element.Height,
+            TopWidth = element.TopWidth,
+            PostSpacing = element.PostSpacing,
+            Variant = element.Variant,
+            Depth = element.Depth,
+            Width = element.Width,
         };
     }
 
