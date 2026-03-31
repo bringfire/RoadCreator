@@ -7,6 +7,7 @@ public static class IntersectionRealizationSchemas
 {
     public const string RequestV1 = "roadcreator.intersection-realization-request/v1";
     public const string ResultV1 = "roadcreator.intersection-realization-result/v1";
+    public const string JoinContractV1 = "roadcreator.intersection-join-contract/v1";
 }
 
 [JsonConverter(typeof(IntersectionPoint3JsonConverter))]
@@ -271,6 +272,99 @@ public sealed class IntersectionRealizationResult
 
     [JsonPropertyName("unresolvedConditions")]
     public JsonElement UnresolvedConditions { get; set; }
+
+    [JsonPropertyName("joinContract")]
+    public IntersectionJoinContract? JoinContract { get; set; }
+}
+
+public sealed class IntersectionJoinContract
+{
+    [JsonPropertyName("schema")]
+    public string Schema { get; set; } = IntersectionRealizationSchemas.JoinContractV1;
+
+    [JsonPropertyName("analysisToken")]
+    public string AnalysisToken { get; set; } = "";
+
+    [JsonPropertyName("targetLayerRoot")]
+    public string TargetLayerRoot { get; set; } = "";
+
+    [JsonPropertyName("realizedBoundaryId")]
+    public string? RealizedBoundaryId { get; set; }
+
+    [JsonPropertyName("realizedSurfaceId")]
+    public string? RealizedSurfaceId { get; set; }
+
+    [JsonPropertyName("corners")]
+    public List<IntersectionJoinCorner> Corners { get; set; } = new();
+
+    [JsonPropertyName("arms")]
+    public List<IntersectionJoinArm> Arms { get; set; } = new();
+}
+
+public sealed class IntersectionJoinCorner
+{
+    [JsonPropertyName("cornerId")]
+    public string CornerId { get; set; } = "";
+
+    [JsonPropertyName("cornerOrder")]
+    public int CornerOrder { get; set; }
+
+    [JsonPropertyName("curbReturnArcId")]
+    public string? CurbReturnArcId { get; set; }
+
+    [JsonPropertyName("incomingRoad")]
+    public string IncomingRoad { get; set; } = "";
+
+    [JsonPropertyName("incomingSide")]
+    public string IncomingSide { get; set; } = "";
+
+    [JsonPropertyName("incomingArmDirection")]
+    public string IncomingArmDirection { get; set; } = "";
+
+    [JsonPropertyName("outgoingRoad")]
+    public string OutgoingRoad { get; set; } = "";
+
+    [JsonPropertyName("outgoingSide")]
+    public string OutgoingSide { get; set; } = "";
+
+    [JsonPropertyName("outgoingArmDirection")]
+    public string OutgoingArmDirection { get; set; } = "";
+
+    [JsonPropertyName("incomingJoinPoint")]
+    public IntersectionPoint3 IncomingJoinPoint { get; set; } = new(0.0, 0.0, 0.0);
+
+    [JsonPropertyName("outgoingJoinPoint")]
+    public IntersectionPoint3 OutgoingJoinPoint { get; set; } = new(0.0, 0.0, 0.0);
+
+    [JsonPropertyName("incomingBoundaryParameter")]
+    public double IncomingBoundaryParameter { get; set; }
+
+    [JsonPropertyName("outgoingBoundaryParameter")]
+    public double OutgoingBoundaryParameter { get; set; }
+
+    [JsonPropertyName("offsetMode")]
+    public string OffsetMode { get; set; } = "";
+
+    [JsonPropertyName("outwardReferencePoint")]
+    public IntersectionPoint3? OutwardReferencePoint { get; set; }
+}
+
+public sealed class IntersectionJoinArm
+{
+    [JsonPropertyName("road")]
+    public string Road { get; set; } = "";
+
+    [JsonPropertyName("side")]
+    public string Side { get; set; } = "";
+
+    [JsonPropertyName("armDirection")]
+    public string ArmDirection { get; set; } = "";
+
+    [JsonPropertyName("joinPoint")]
+    public IntersectionPoint3 JoinPoint { get; set; } = new(0.0, 0.0, 0.0);
+
+    [JsonPropertyName("boundaryParameter")]
+    public double BoundaryParameter { get; set; }
 }
 
 public sealed class IntersectionLayerPaths

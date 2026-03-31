@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using global::Rhino;
@@ -178,6 +179,13 @@ public sealed class IntersectionRealizer
                 attrs.SetUserString("rook_intersection_index", i.ToString());
                 if (arc.CornerOrder.HasValue)
                     attrs.SetUserString("rook_intersection_corner", arc.CornerOrder.Value.ToString());
+                attrs.SetUserString(
+                    "rook_corner_incoming_join_point",
+                    FormatPointInvariant(arc.StartPoint));
+                attrs.SetUserString(
+                    "rook_corner_outgoing_join_point",
+                    FormatPointInvariant(arc.EndPoint));
+                ApplyCornerPairingMetadata(attrs, request.CornerPairings, arc.CornerOrder);
                 ApplyPersistentIntersectionRecord(attrs, request, "curb_return_arc");
 
                 var arcId = doc.Objects.AddCurve(arcCurve, attrs);
@@ -281,6 +289,18 @@ public sealed class IntersectionRealizer
                             ? RoundTo(surfaceMassProps.Area, 4)
                             : RoundTo(request.ProvisionalBoundary2D.Area, 4);
                     }
+
+                    var joinContract = BuildJoinContract(
+                        realizedBoundary,
+                        request,
+                        result.Created.CurbReturnArcIds,
+                        result.Created.RealizedBoundaryId,
+                        result.Created.RealizedSurfaceId,
+                        tolerance);
+                    result.JoinContract = joinContract;
+                    PersistJoinContractMetadata(doc, boundaryId, joinContract);
+                    PersistJoinContractMetadata(doc, surfaceId, joinContract);
+                    PersistCornerJoinMetadata(doc, joinContract);
 
                     if (persistDebugArtifacts)
                     {
@@ -467,6 +487,398 @@ public sealed class IntersectionRealizer
         if (!string.IsNullOrWhiteSpace(request.SelectedCandidate?.CandidateId))
             attrs.SetUserString("rook_intersection_candidate_id", request.SelectedCandidate!.CandidateId);
         attrs.SetUserString("rook_intersection_target_layer_root", request.TargetLayerRoot);
+    }
+
+    private static void ApplyCornerPairingMetadata(
+        ObjectAttributes attrs,
+        JsonElement cornerPairings,
+        int? cornerOrder)
+    {
+        if (!cornerOrder.HasValue || cornerPairings.ValueKind != JsonValueKind.Array)
+            return;
+
+        foreach (var pairing in cornerPairings.EnumerateArray())
+        {
+            if (!pairing.TryGetProperty("cornerOrder", out var orderElement)
+                || !orderElement.TryGetInt32(out var pairingCornerOrder)
+                || pairingCornerOrder != cornerOrder.Value)
+            {
+                continue;
+            }
+
+            ApplyCornerEndpointMetadata(attrs, pairing, "incoming");
+            ApplyCornerEndpointMetadata(attrs, pairing, "outgoing");
+            break;
+        }
+    }
+
+    private static void ApplyCornerEndpointMetadata(
+        ObjectAttributes attrs,
+        JsonElement pairing,
+        string endpointName)
+    {
+        if (!pairing.TryGetProperty(endpointName, out var key))
+            return;
+
+        if (!TryGetCornerEndpointMetadata(key, out var road, out var physicalSide, out var armDirection))
+            return;
+
+        attrs.SetUserString($"rook_corner_{endpointName}_road", road);
+        attrs.SetUserString($"rook_corner_{endpointName}_side", physicalSide);
+        attrs.SetUserString($"rook_corner_{endpointName}_arm_direction", armDirection);
+    }
+
+    private static IntersectionJoinContract BuildJoinContract(
+        Curve realizedBoundary,
+        IntersectionRealizationRequest request,
+        IReadOnlyList<string> curbReturnArcIds,
+        string? realizedBoundaryId,
+        string? realizedSurfaceId,
+        double tolerance)
+    {
+        var contract = new IntersectionJoinContract
+        {
+            AnalysisToken = request.AnalysisToken,
+            TargetLayerRoot = request.TargetLayerRoot,
+            RealizedBoundaryId = realizedBoundaryId,
+            RealizedSurfaceId = realizedSurfaceId,
+        };
+
+        var trimPointsByEdge = BuildApproachTrimPoints(request);
+        foreach (var (edgeKey, trimPoints) in trimPointsByEdge)
+        {
+            var keyParts = edgeKey.Split('|');
+            if (keyParts.Length != 2)
+                continue;
+
+            foreach (var trimPoint in trimPoints)
+            {
+                if (!realizedBoundary.ClosestPoint(trimPoint.Point, out var t))
+                    continue;
+
+                var snapped = realizedBoundary.PointAt(t);
+                contract.Arms.Add(new IntersectionJoinArm
+                {
+                    Road = keyParts[0],
+                    Side = keyParts[1],
+                    ArmDirection = trimPoint.ArmDirection,
+                    JoinPoint = ToIntersectionPoint3(snapped),
+                    BoundaryParameter = RoundTo(t, 6),
+                });
+            }
+        }
+
+        for (int i = 0; i < request.AnalysisGeometry2D.CurbReturnArcs.Count; i++)
+        {
+            var arc = request.AnalysisGeometry2D.CurbReturnArcs[i];
+            if (!arc.CornerOrder.HasValue)
+                continue;
+            if (!TryGetCornerPairingEndpoints(
+                    request.CornerPairings,
+                    arc.CornerOrder.Value,
+                    out var incomingRoad,
+                    out var incomingSide,
+                    out var incomingArmDirection,
+                    out var outgoingRoad,
+                    out var outgoingSide,
+                    out var outgoingArmDirection))
+            {
+                continue;
+            }
+
+            if (!TryFindMatchingJoinArm(
+                    contract.Arms,
+                    incomingRoad,
+                    incomingSide,
+                    incomingArmDirection,
+                    ToRhinoPoint(arc.StartPoint),
+                    out var incomingArm)
+                || !TryFindMatchingJoinArm(
+                    contract.Arms,
+                    outgoingRoad,
+                    outgoingSide,
+                    outgoingArmDirection,
+                    ToRhinoPoint(arc.EndPoint),
+                    out var outgoingArm))
+            {
+                continue;
+            }
+
+            var corner = new IntersectionJoinCorner
+            {
+                CornerId = $"{request.AnalysisToken}:corner:{arc.CornerOrder.Value}",
+                CornerOrder = arc.CornerOrder.Value,
+                CurbReturnArcId = i < curbReturnArcIds.Count ? curbReturnArcIds[i] : null,
+                IncomingRoad = incomingRoad,
+                IncomingSide = incomingSide,
+                IncomingArmDirection = incomingArmDirection,
+                OutgoingRoad = outgoingRoad,
+                OutgoingSide = outgoingSide,
+                OutgoingArmDirection = outgoingArmDirection,
+                IncomingJoinPoint = incomingArm.JoinPoint,
+                OutgoingJoinPoint = outgoingArm.JoinPoint,
+                IncomingBoundaryParameter = incomingArm.BoundaryParameter,
+                OutgoingBoundaryParameter = outgoingArm.BoundaryParameter,
+            };
+
+            if (TryDetermineCornerOffsetFromBoundary(
+                    realizedBoundary,
+                    arc,
+                    tolerance,
+                    out var offsetMode,
+                    out var outwardReferencePoint))
+            {
+                corner.OffsetMode = offsetMode;
+                corner.OutwardReferencePoint = ToIntersectionPoint3(outwardReferencePoint);
+            }
+
+            contract.Corners.Add(corner);
+        }
+
+        contract.Corners = contract.Corners
+            .OrderBy(static corner => corner.CornerOrder)
+            .ToList();
+        contract.Arms = contract.Arms
+            .OrderBy(static arm => arm.Road, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static arm => arm.Side, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static arm => arm.ArmDirection, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static arm => arm.BoundaryParameter)
+            .ToList();
+
+        return contract;
+    }
+
+    private static void PersistJoinContractMetadata(
+        RhinoDoc doc,
+        Guid objectId,
+        IntersectionJoinContract contract)
+    {
+        var obj = doc.Objects.FindId(objectId);
+        if (obj == null)
+            return;
+
+        var attrs = obj.Attributes.Duplicate();
+        attrs.SetUserString("rook_intersection_join_contract_schema", IntersectionRealizationSchemas.JoinContractV1);
+        attrs.SetUserString("rook_intersection_join_contract", JsonSerializer.Serialize(contract));
+        doc.Objects.ModifyAttributes(objectId, attrs, true);
+    }
+
+    private static void PersistCornerJoinMetadata(
+        RhinoDoc doc,
+        IntersectionJoinContract contract)
+    {
+        foreach (var corner in contract.Corners)
+        {
+            if (string.IsNullOrWhiteSpace(corner.CurbReturnArcId)
+                || !Guid.TryParse(corner.CurbReturnArcId, out var arcId))
+            {
+                continue;
+            }
+
+            var obj = doc.Objects.FindId(arcId);
+            if (obj == null)
+                continue;
+
+            var attrs = obj.Attributes.Duplicate();
+            attrs.SetUserString("rook_corner_id", corner.CornerId);
+            attrs.SetUserString("rook_corner_incoming_boundary_parameter", corner.IncomingBoundaryParameter.ToString("G17", CultureInfo.InvariantCulture));
+            attrs.SetUserString("rook_corner_outgoing_boundary_parameter", corner.OutgoingBoundaryParameter.ToString("G17", CultureInfo.InvariantCulture));
+            if (!string.IsNullOrWhiteSpace(corner.OffsetMode))
+                attrs.SetUserString("rook_corner_offset_mode", corner.OffsetMode);
+            if (corner.OutwardReferencePoint != null)
+                attrs.SetUserString("rook_corner_outward_ref", FormatPointInvariant(corner.OutwardReferencePoint));
+
+            doc.Objects.ModifyAttributes(arcId, attrs, true);
+        }
+    }
+
+    private static bool TryGetCornerPairingEndpoints(
+        JsonElement cornerPairings,
+        int cornerOrder,
+        out string incomingRoad,
+        out string incomingSide,
+        out string incomingArmDirection,
+        out string outgoingRoad,
+        out string outgoingSide,
+        out string outgoingArmDirection)
+    {
+        incomingRoad = string.Empty;
+        incomingSide = string.Empty;
+        incomingArmDirection = string.Empty;
+        outgoingRoad = string.Empty;
+        outgoingSide = string.Empty;
+        outgoingArmDirection = string.Empty;
+
+        if (cornerPairings.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var pairing in cornerPairings.EnumerateArray())
+        {
+            if (!pairing.TryGetProperty("cornerOrder", out var orderElement)
+                || !orderElement.TryGetInt32(out var pairingCornerOrder)
+                || pairingCornerOrder != cornerOrder)
+            {
+                continue;
+            }
+
+            if (!pairing.TryGetProperty("incoming", out var incomingKey)
+                || !pairing.TryGetProperty("outgoing", out var outgoingKey))
+            {
+                return false;
+            }
+
+            if (!TryGetCornerEndpointMetadata(incomingKey, out incomingRoad, out incomingSide, out incomingArmDirection)
+                || !TryGetCornerEndpointMetadata(outgoingKey, out outgoingRoad, out outgoingSide, out outgoingArmDirection))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryFindMatchingJoinArm(
+        IReadOnlyList<IntersectionJoinArm> arms,
+        string road,
+        string side,
+        string armDirection,
+        Point3d referencePoint,
+        out IntersectionJoinArm matchingArm)
+    {
+        matchingArm = null!;
+
+        var candidates = arms
+            .Where(arm =>
+                arm.Road.Equals(road, StringComparison.OrdinalIgnoreCase)
+                && arm.Side.Equals(side, StringComparison.OrdinalIgnoreCase)
+                && arm.ArmDirection.Equals(armDirection, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (candidates.Count == 0)
+            return false;
+
+        matchingArm = candidates
+            .OrderBy(arm => ToRhinoPoint(arm.JoinPoint).DistanceTo(referencePoint))
+            .First();
+        return true;
+    }
+
+    private static bool TryDetermineCornerOffsetFromBoundary(
+        Curve realizedBoundary,
+        IntersectionCurbReturnArc arc,
+        double tolerance,
+        out string offsetMode,
+        out Point3d outwardReferencePoint)
+    {
+        offsetMode = string.Empty;
+        outwardReferencePoint = Point3d.Unset;
+
+        if (!TryBuildArc(arc, out var rhinoArc, out _))
+            return false;
+
+        using var arcCurve = new ArcCurve(rhinoArc);
+        if (!arcCurve.NormalizedLengthParameter(0.5, out var arcMidT))
+            return false;
+
+        var arcMidPoint = arcCurve.PointAt(arcMidT);
+        if (!realizedBoundary.ClosestPoint(arcMidPoint, out var boundaryT))
+            return false;
+
+        var boundaryPoint = realizedBoundary.PointAt(boundaryT);
+        var tangent = realizedBoundary.TangentAt(boundaryT);
+        tangent.Z = 0.0;
+        if (!tangent.Unitize())
+            return false;
+
+        var leftNormal = new Vector3d(-tangent.Y, tangent.X, 0.0);
+        var rightNormal = new Vector3d(tangent.Y, -tangent.X, 0.0);
+        var sampleDistance = Math.Max(1.0, tolerance * 10.0);
+
+        var leftPoint = boundaryPoint + leftNormal * sampleDistance;
+        var rightPoint = boundaryPoint + rightNormal * sampleDistance;
+        var leftContainment = realizedBoundary.Contains(leftPoint, Plane.WorldXY, tolerance);
+        var rightContainment = realizedBoundary.Contains(rightPoint, Plane.WorldXY, tolerance);
+
+        Vector3d outwardNormal;
+        if (leftContainment == PointContainment.Outside
+            && rightContainment != PointContainment.Outside)
+        {
+            outwardNormal = leftNormal;
+        }
+        else if (rightContainment == PointContainment.Outside
+                 && leftContainment != PointContainment.Outside)
+        {
+            outwardNormal = rightNormal;
+        }
+        else
+        {
+            return false;
+        }
+
+        var center = ToRhinoPoint(arc.Center);
+        var radial = boundaryPoint - center;
+        radial.Z = 0.0;
+        if (!radial.Unitize())
+            return false;
+
+        offsetMode = Vector3d.Multiply(outwardNormal, radial) >= 0.0
+            ? "increase_radius"
+            : "decrease_radius";
+        outwardReferencePoint = boundaryPoint + outwardNormal * Math.Max(2.0, tolerance * 20.0);
+        return true;
+    }
+
+    private static IntersectionPoint3 ToIntersectionPoint3(Point3d point) =>
+        new(
+            RoundTo(point.X, 4),
+            RoundTo(point.Y, 4),
+            RoundTo(point.Z, 4));
+
+    private static string FormatPointInvariant(IntersectionPoint3 point) =>
+        string.Format(
+            CultureInfo.InvariantCulture,
+            "{0:F4},{1:F4},{2:F4}",
+            point.X,
+            point.Y,
+            point.Z);
+
+    private static bool TryGetCornerEndpointMetadata(
+        JsonElement key,
+        out string road,
+        out string physicalSide,
+        out string armDirection)
+    {
+        road = string.Empty;
+        physicalSide = string.Empty;
+        armDirection = string.Empty;
+
+        if (!key.TryGetProperty("road", out var roadElement)
+            || !key.TryGetProperty("side", out var sideElement)
+            || !key.TryGetProperty("armId", out var armIdElement))
+        {
+            return false;
+        }
+
+        road = roadElement.GetString() ?? string.Empty;
+        var side = sideElement.GetString() ?? string.Empty;
+        var armId = armIdElement.GetString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(road) || string.IsNullOrWhiteSpace(side) || string.IsNullOrWhiteSpace(armId))
+            return false;
+
+        armDirection = armId.EndsWith(":backward", StringComparison.OrdinalIgnoreCase)
+            ? "backward"
+            : armId.EndsWith(":forward", StringComparison.OrdinalIgnoreCase)
+                ? "forward"
+                : string.Empty;
+        if (string.IsNullOrWhiteSpace(armDirection))
+            return false;
+
+        physicalSide = armDirection.Equals("backward", StringComparison.OrdinalIgnoreCase)
+            ? OppositeSide(side)
+            : side;
+
+        return physicalSide == "left" || physicalSide == "right";
     }
 
     private static IEnumerable<ApproachEdgeSegment> BuildApproachEdgeSegments(
