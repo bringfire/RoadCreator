@@ -176,6 +176,9 @@ public sealed class IntersectionRealizer
                     "curb_return_arc",
                     "intersection_curb_return");
                 attrs.SetUserString("rook_intersection_index", i.ToString());
+                if (arc.CornerOrder.HasValue)
+                    attrs.SetUserString("rook_intersection_corner", arc.CornerOrder.Value.ToString());
+                ApplyPersistentIntersectionRecord(attrs, request, "curb_return_arc");
 
                 var arcId = doc.Objects.AddCurve(arcCurve, attrs);
                 if (arcId == Guid.Empty)
