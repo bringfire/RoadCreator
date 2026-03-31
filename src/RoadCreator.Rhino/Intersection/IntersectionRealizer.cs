@@ -99,11 +99,8 @@ public sealed class IntersectionRealizer
             },
             UnresolvedConditions = CloneJson(request.UnresolvedConditions),
         };
-        result.Summaries.CurbReturnArcLength = RoundTo(
-            request.AnalysisGeometry2D.CurbReturnArcs
-                .Where(static arc => arc.Radius > 0.0)
-                .Sum(static arc => EstimateArcLength(arc)),
-            4);
+        // CurbReturnArcLength is accumulated from actual built geometry in the
+        // always-persisted curb return arc loop below — no pre-initialization needed.
 
         var namePrefix = string.IsNullOrWhiteSpace(request.NamePrefix)
             ? "IntersectionAnalysis2D"
