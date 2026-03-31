@@ -59,9 +59,9 @@ public sealed class IntersectionRealizer
             ? layers.EnsureLayer(analysisLayerPath, Color.Black)
             : -1;
         int boundaryLayerIndex = layers.EnsureLayer(boundaryLayerPath, Color.Black);
-        int curbReturnsLayerIndex = persistGuideArtifacts
-            ? layers.EnsureLayer(curbReturnsLayerPath, Color.Black)
-            : -1;
+        // Curb return arcs are always persisted — they are first-class intersection
+        // artifacts consumed by downstream corner sidewalk generation, not debug guides.
+        int curbReturnsLayerIndex = layers.EnsureLayer(curbReturnsLayerPath, Color.Black);
         int surfaceLayerIndex = layers.EnsureLayer(surfaceLayerPath, Color.Black);
         int approachEdgesLayerIndex = persistApproachEdges
             ? layers.EnsureLayer(approachEdgesLayerPath, Color.Black)
@@ -88,7 +88,7 @@ public sealed class IntersectionRealizer
             {
                 Analysis = persistGuideArtifacts ? analysisLayerPath : string.Empty,
                 Boundary = boundaryLayerPath,
-                CurbReturns = persistGuideArtifacts ? curbReturnsLayerPath : string.Empty,
+                CurbReturns = curbReturnsLayerPath,
                 Surface = surfaceLayerPath,
                 ApproachEdges = persistApproachEdges ? approachEdgesLayerPath : null,
                 ApproachPatches = persistApproachPatches ? approachPatchesLayerPath : null,
@@ -160,30 +160,34 @@ public sealed class IntersectionRealizer
                     result.CreatedIds.Add(lineId.ToString());
                 }
 
-                for (int i = 0; i < request.AnalysisGeometry2D.CurbReturnArcs.Count; i++)
-                {
-                    var arc = request.AnalysisGeometry2D.CurbReturnArcs[i];
-                    if (!TryBuildArc(arc, out var rhinoArc, out var arcLength))
-                        throw new InvalidOperationException($"Failed to build curb return arc {i}");
+            }
 
-                    using var arcCurve = new ArcCurve(rhinoArc);
-                    var attrs = BuildAttributes(
-                        curbReturnsLayerIndex,
-                        $"{namePrefix}::curb-return-{i}",
-                        request.AnalysisToken,
-                        "curb_return_arc",
-                        "analysis_guides_2d");
-                    attrs.SetUserString("rook_intersection_index", i.ToString());
+            // Curb return arcs are always persisted — they are first-class intersection
+            // artifacts that drive downstream corner sidewalk generation. They are NOT
+            // debug guides; they represent the intersection's semantic curb-return geometry.
+            for (int i = 0; i < request.AnalysisGeometry2D.CurbReturnArcs.Count; i++)
+            {
+                var arc = request.AnalysisGeometry2D.CurbReturnArcs[i];
+                if (!TryBuildArc(arc, out var rhinoArc, out var arcLength))
+                    throw new InvalidOperationException($"Failed to build curb return arc {i}");
 
-                    var arcId = doc.Objects.AddCurve(arcCurve, attrs);
-                    if (arcId == Guid.Empty)
-                        throw new InvalidOperationException($"Failed to add curb return arc {i}");
+                using var arcCurve = new ArcCurve(rhinoArc);
+                var attrs = BuildAttributes(
+                    curbReturnsLayerIndex,
+                    $"{namePrefix}::curb-return-{i}",
+                    request.AnalysisToken,
+                    "curb_return_arc",
+                    "intersection_curb_return");
+                attrs.SetUserString("rook_intersection_index", i.ToString());
 
-                    createdObjectIds.Add(arcId);
-                    result.Created.CurbReturnArcIds.Add(arcId.ToString());
-                    result.CreatedIds.Add(arcId.ToString());
-                    result.Summaries.CurbReturnArcLength += arcLength;
-                }
+                var arcId = doc.Objects.AddCurve(arcCurve, attrs);
+                if (arcId == Guid.Empty)
+                    throw new InvalidOperationException($"Failed to add curb return arc {i}");
+
+                createdObjectIds.Add(arcId);
+                result.Created.CurbReturnArcIds.Add(arcId.ToString());
+                result.CreatedIds.Add(arcId.ToString());
+                result.Summaries.CurbReturnArcLength += arcLength;
             }
 
             approachEdges = BuildApproachEdgeSegments(doc, request, tolerance).ToList();
