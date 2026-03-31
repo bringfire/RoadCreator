@@ -1,5 +1,6 @@
 using global::Rhino;
 using RoadCreator.Core.Footprint;
+using RoadCreator.Rhino.Database;
 
 namespace RoadCreator.Rhino.Footprint;
 
@@ -11,9 +12,10 @@ namespace RoadCreator.Rhino.Footprint;
 ///   "RC_Profile::{name}"   → serialized OffsetProfile JSON
 ///   "RC_StyleSet::{name}"  → serialized StyleSet JSON
 ///
-/// No external files, no path management — definitions travel with the document.
-/// Agents use RC_StoreProfile / RC_StoreStyleSet to populate the store, then
-/// reference profiles by name in RC_RoadFootprint.
+/// Get/List/Delete operate on the active document only.
+/// Resolve methods (for "use" paths like footprint generation) read through
+/// to the external database. The external database is a shared .3dm whose
+/// path is set via RC_SetExternalDatabase.
 /// </summary>
 public static class FootprintProfileStore
 {
@@ -28,12 +30,18 @@ public static class FootprintProfileStore
         doc.Strings.SetString(ProfilePrefix + profile.Name, json);
     }
 
+    /// <summary>
+    /// Retrieve an offset profile from the active document only.
+    /// </summary>
     public static OffsetProfile? GetProfile(RhinoDoc doc, string name)
     {
         var json = doc.Strings.GetValue(ProfilePrefix + name);
         return json != null ? FootprintSerializer.DeserializeProfile(json) : null;
     }
 
+    /// <summary>
+    /// List offset profile names in the active document only.
+    /// </summary>
     public static IReadOnlyList<string> ListProfiles(RhinoDoc doc)
     {
         var result = new List<string>();
@@ -64,12 +72,18 @@ public static class FootprintProfileStore
         doc.Strings.SetString(StyleSetPrefix + styleSet.Name, json);
     }
 
+    /// <summary>
+    /// Retrieve a style set from the active document only.
+    /// </summary>
     public static StyleSet? GetStyleSet(RhinoDoc doc, string name)
     {
         var json = doc.Strings.GetValue(StyleSetPrefix + name);
         return json != null ? FootprintSerializer.DeserializeStyleSet(json) : null;
     }
 
+    /// <summary>
+    /// List style set names in the active document only.
+    /// </summary>
     public static IReadOnlyList<string> ListStyleSets(RhinoDoc doc)
     {
         var result = new List<string>();
@@ -95,46 +109,98 @@ public static class FootprintProfileStore
     // ── Resolution ────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Resolve a profile by name: document store first, then inline JSON fallback.
-    /// Returns null if neither source yields a valid profile.
+    /// Resolve a profile by name or inline JSON with provenance.
+    /// Resolution order: active document → external database → inline JSON.
+    /// Returns null if no source yields a valid profile.
     /// </summary>
     public static OffsetProfile? ResolveProfile(RhinoDoc doc, string nameOrJson)
     {
-        // Try as a stored name first
-        var stored = GetProfile(doc, nameOrJson);
-        if (stored != null) return stored;
+        return ResolveProfile(doc, nameOrJson, out _);
+    }
 
-        // Try as inline JSON (agent workflow: pass profile directly without storing)
+    /// <summary>
+    /// Resolve a profile by name or inline JSON with provenance.
+    /// </summary>
+    public static OffsetProfile? ResolveProfile(RhinoDoc doc, string nameOrJson, out string source)
+    {
+        // 1. Active document
+        var docJson = doc.Strings.GetValue(ProfilePrefix + nameOrJson);
+        if (docJson != null)
+        {
+            var profile = FootprintSerializer.DeserializeProfile(docJson);
+            if (profile != null) { source = "document"; return profile; }
+        }
+
+        // 2. External database
+        var extJson = ExternalProfileResolver.GetString(ProfilePrefix + nameOrJson);
+        if (extJson != null)
+        {
+            var profile = FootprintSerializer.DeserializeProfile(extJson);
+            if (profile != null) { source = "external_database"; return profile; }
+        }
+
+        // 3. Inline JSON
         if (nameOrJson.TrimStart().StartsWith('{'))
-            return FootprintSerializer.DeserializeProfile(nameOrJson);
+        {
+            var profile = FootprintSerializer.DeserializeProfile(nameOrJson);
+            if (profile != null) { source = "inline"; return profile; }
+        }
 
+        source = "none";
         return null;
     }
 
     /// <summary>
-    /// Resolve a style set by name: document store → built-in defaults → inline JSON.
-    /// Falls back to DefaultStyles.Generic so rendering never fails silently.
+    /// Resolve a style set by name or inline JSON with provenance.
+    /// Resolution order: active document → external database → built-in → inline JSON → default.
     /// </summary>
     public static StyleSet ResolveStyleSet(RhinoDoc doc, string? nameOrJson)
     {
+        return ResolveStyleSet(doc, nameOrJson, out _);
+    }
+
+    /// <summary>
+    /// Resolve a style set by name or inline JSON with provenance.
+    /// </summary>
+    public static StyleSet ResolveStyleSet(RhinoDoc doc, string? nameOrJson, out string source)
+    {
         if (string.IsNullOrEmpty(nameOrJson))
+        {
+            source = "builtin";
             return DefaultStyles.Generic;
+        }
 
-        // Document store
-        var stored = GetStyleSet(doc, nameOrJson);
-        if (stored != null) return stored;
+        // 1. Active document
+        var docJson = doc.Strings.GetValue(StyleSetPrefix + nameOrJson);
+        if (docJson != null)
+        {
+            var styleSet = FootprintSerializer.DeserializeStyleSet(docJson);
+            if (styleSet != null) { source = "document"; return styleSet; }
+        }
 
-        // Built-in defaults
+        // 2. External database
+        var extJson = ExternalProfileResolver.GetString(StyleSetPrefix + nameOrJson);
+        if (extJson != null)
+        {
+            var styleSet = FootprintSerializer.DeserializeStyleSet(extJson);
+            if (styleSet != null) { source = "external_database"; return styleSet; }
+        }
+
+        // 3. Built-in defaults
         if (DefaultStyles.All.TryGetValue(nameOrJson, out var builtin))
+        {
+            source = "builtin";
             return builtin;
+        }
 
-        // Inline JSON
+        // 4. Inline JSON
         if (nameOrJson.TrimStart().StartsWith('{'))
         {
             var parsed = FootprintSerializer.DeserializeStyleSet(nameOrJson);
-            if (parsed != null) return parsed;
+            if (parsed != null) { source = "inline"; return parsed; }
         }
 
+        source = "builtin";
         return DefaultStyles.Generic;
     }
 }

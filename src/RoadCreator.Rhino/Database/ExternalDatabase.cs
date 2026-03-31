@@ -22,7 +22,11 @@ internal static class ExternalDatabase
     public static string? Path
     {
         get => _path;
-        set => _path = value;
+        set
+        {
+            _path = value;
+            ExternalProfileResolver.InvalidateCache();
+        }
     }
 
     /// <summary>True if a path has been configured (even if the file is missing).</summary>
