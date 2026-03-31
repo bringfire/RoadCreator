@@ -1,5 +1,6 @@
 using global::Rhino;
 using RoadCreator.Core.Profiles;
+using RoadCreator.Rhino.Database;
 
 namespace RoadCreator.Rhino.Profiles;
 
@@ -39,7 +40,7 @@ public static class RoadProfileStore
     }
 
     /// <summary>
-    /// Retrieve a stored road profile by name. Returns null if not found.
+    /// Retrieve a road profile from the active document only.
     /// Lazily backfills the native summary if missing or schema-stale.
     /// </summary>
     public static RoadProfileDefinition? Get(RhinoDoc doc, string name)
@@ -50,12 +51,11 @@ public static class RoadProfileStore
         if (profile == null) return null;
 
         EnsureSummary(doc, profile);
-
         return profile;
     }
 
     /// <summary>
-    /// Check whether a road profile exists in the document.
+    /// Check whether a road profile exists in the active document.
     /// </summary>
     public static bool Exists(RhinoDoc doc, string name)
     {
@@ -63,7 +63,7 @@ public static class RoadProfileStore
     }
 
     /// <summary>
-    /// List all stored road profile names.
+    /// List road profile names in the active document only.
     /// </summary>
     public static IReadOnlyList<string> List(RhinoDoc doc)
     {
@@ -77,6 +77,47 @@ public static class RoadProfileStore
         }
         result.Sort(StringComparer.OrdinalIgnoreCase);
         return result;
+    }
+
+    // ── Resolution (read-through for "use" paths) ─────────────────────────────
+
+    /// <summary>
+    /// Resolve a road profile for use (e.g., intersection, road surface, footprint).
+    /// Resolution order: active document → external database.
+    /// Does NOT persist external database profiles into the active document.
+    /// </summary>
+    public static RoadProfileDefinition? Resolve(RhinoDoc doc, string name)
+    {
+        return Resolve(doc, name, out _);
+    }
+
+    /// <summary>
+    /// Resolve a road profile for use, with provenance.
+    /// </summary>
+    public static RoadProfileDefinition? Resolve(RhinoDoc doc, string name, out string source)
+    {
+        // 1. Active document
+        var profile = Get(doc, name);
+        if (profile != null)
+        {
+            source = "document";
+            return profile;
+        }
+
+        // 2. External database
+        var extJson = ExternalProfileResolver.GetString(Prefix + name);
+        if (extJson != null)
+        {
+            var extProfile = RoadProfileSerializer.Deserialize(extJson);
+            if (extProfile != null)
+            {
+                source = "external_database";
+                return extProfile;
+            }
+        }
+
+        source = "none";
+        return null;
     }
 
     /// <summary>
