@@ -617,9 +617,24 @@ public sealed class IntersectionRealizer
                 OutgoingArmDirection = outgoingArmDirection,
                 IncomingJoinPoint = incomingArm.JoinPoint,
                 OutgoingJoinPoint = outgoingArm.JoinPoint,
+                IncomingTrimPoint = incomingArm.JoinPoint,
+                OutgoingTrimPoint = outgoingArm.JoinPoint,
                 IncomingBoundaryParameter = incomingArm.BoundaryParameter,
                 OutgoingBoundaryParameter = outgoingArm.BoundaryParameter,
             };
+
+            if (TryDetermineCornerTrimPoints(
+                    realizedBoundary,
+                    arc,
+                    ToRhinoPoint(incomingArm.JoinPoint),
+                    ToRhinoPoint(outgoingArm.JoinPoint),
+                    tolerance,
+                    out var incomingTrimPoint,
+                    out var outgoingTrimPoint))
+            {
+                corner.IncomingTrimPoint = ToIntersectionPoint3(incomingTrimPoint);
+                corner.OutgoingTrimPoint = ToIntersectionPoint3(outgoingTrimPoint);
+            }
 
             if (TryDetermineCornerOffsetFromBoundary(
                     realizedBoundary,
@@ -683,6 +698,8 @@ public sealed class IntersectionRealizer
             attrs.SetUserString("rook_corner_id", corner.CornerId);
             attrs.SetUserString("rook_corner_incoming_boundary_parameter", corner.IncomingBoundaryParameter.ToString("G17", CultureInfo.InvariantCulture));
             attrs.SetUserString("rook_corner_outgoing_boundary_parameter", corner.OutgoingBoundaryParameter.ToString("G17", CultureInfo.InvariantCulture));
+            attrs.SetUserString("rook_corner_incoming_trim_point", FormatPointInvariant(corner.IncomingTrimPoint));
+            attrs.SetUserString("rook_corner_outgoing_trim_point", FormatPointInvariant(corner.OutgoingTrimPoint));
             if (!string.IsNullOrWhiteSpace(corner.OffsetMode))
                 attrs.SetUserString("rook_corner_offset_mode", corner.OffsetMode);
             if (corner.OutwardReferencePoint != null)
@@ -827,6 +844,209 @@ public sealed class IntersectionRealizer
             : "decrease_radius";
         outwardReferencePoint = boundaryPoint + outwardNormal * Math.Max(2.0, tolerance * 20.0);
         return true;
+    }
+
+    private static bool TryDetermineCornerTrimPoints(
+        Curve realizedBoundary,
+        IntersectionCurbReturnArc arc,
+        Point3d incomingJoinPoint,
+        Point3d outgoingJoinPoint,
+        double tolerance,
+        out Point3d incomingTrimPoint,
+        out Point3d outgoingTrimPoint)
+    {
+        incomingTrimPoint = Point3d.Unset;
+        outgoingTrimPoint = Point3d.Unset;
+
+        if (!TryBuildArc(arc, out var rhinoArc, out _))
+            return false;
+
+        using var sourceArc = new ArcCurve(rhinoArc);
+        if (!TryExtractBoundaryCornerChain(realizedBoundary, sourceArc, tolerance, out var boundaryChain))
+            return false;
+
+        using (boundaryChain)
+        {
+            var chainStart = boundaryChain.PointAtStart;
+            var chainEnd = boundaryChain.PointAtEnd;
+
+            var incomingDistanceToStart = incomingJoinPoint.DistanceTo(chainStart);
+            var incomingDistanceToEnd = incomingJoinPoint.DistanceTo(chainEnd);
+            if (incomingDistanceToStart <= incomingDistanceToEnd)
+            {
+                incomingTrimPoint = chainStart;
+                outgoingTrimPoint = chainEnd;
+            }
+            else
+            {
+                incomingTrimPoint = chainEnd;
+                outgoingTrimPoint = chainStart;
+            }
+
+            return incomingTrimPoint.IsValid && outgoingTrimPoint.IsValid;
+        }
+    }
+
+    private static bool TryExtractBoundaryCornerChain(
+        Curve boundaryCurve,
+        Curve sourceArc,
+        double tolerance,
+        out Curve boundaryChain)
+    {
+        boundaryChain = null!;
+
+        Curve[]? segments;
+        try
+        {
+            segments = boundaryCurve.DuplicateSegments();
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (segments == null || segments.Length == 0)
+            return false;
+
+        var sourceMidpoint = sourceArc.PointAtNormalizedLength(0.5);
+        int anchorIndex = -1;
+        bool anchorIsNonLinear = false;
+        double bestScore = double.MaxValue;
+
+        for (int i = 0; i < segments.Length; i++)
+        {
+            var segment = segments[i];
+            if (segment == null)
+                continue;
+
+            double length;
+            try
+            {
+                length = segment.GetLength();
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (length <= Math.Max(tolerance * 10.0, 1e-3))
+                continue;
+
+            var midpoint = segment.PointAtNormalizedLength(0.5);
+            var score = midpoint.DistanceTo(sourceMidpoint);
+            var isNonLinear = !segment.IsLinear(Math.Max(tolerance, 1e-6));
+            var take =
+                anchorIndex < 0
+                || (isNonLinear && !anchorIsNonLinear)
+                || (isNonLinear == anchorIsNonLinear && score < bestScore);
+
+            if (take)
+            {
+                anchorIndex = i;
+                anchorIsNonLinear = isNonLinear;
+                bestScore = score;
+            }
+        }
+
+        if (anchorIndex < 0)
+        {
+            foreach (var segment in segments)
+                segment?.Dispose();
+            return false;
+        }
+
+        var selectedIndices = new HashSet<int> { anchorIndex };
+
+        int current = anchorIndex;
+        while (true)
+        {
+            int prev = (current - 1 + segments.Length) % segments.Length;
+            if (selectedIndices.Contains(prev)
+                || !AreBoundarySegmentsTangentConnected(segments[prev], segments[current], tolerance))
+            {
+                break;
+            }
+
+            selectedIndices.Add(prev);
+            current = prev;
+        }
+
+        current = anchorIndex;
+        while (true)
+        {
+            int next = (current + 1) % segments.Length;
+            if (selectedIndices.Contains(next)
+                || !AreBoundarySegmentsTangentConnected(segments[current], segments[next], tolerance))
+            {
+                break;
+            }
+
+            selectedIndices.Add(next);
+            current = next;
+        }
+
+        var orderedSelected = new List<Curve>();
+        for (int step = 0; step < segments.Length; step++)
+        {
+            int idx = (anchorIndex + step) % segments.Length;
+            if (!selectedIndices.Contains(idx))
+                continue;
+
+            orderedSelected.Add(segments[idx].DuplicateCurve());
+            if (orderedSelected.Count == selectedIndices.Count)
+                break;
+        }
+
+        foreach (var segment in segments)
+            segment?.Dispose();
+
+        if (orderedSelected.Count == 0)
+            return false;
+
+        if (orderedSelected.Count == 1)
+        {
+            boundaryChain = orderedSelected[0];
+            return true;
+        }
+
+        var joined = Curve.JoinCurves(orderedSelected, Math.Max(tolerance, 1e-6), true);
+        foreach (var segment in orderedSelected)
+            segment.Dispose();
+
+        if (joined == null || joined.Length == 0)
+            return false;
+
+        var bestJoined = joined
+            .OrderByDescending(static c => c?.GetLength() ?? 0.0)
+            .First()!;
+        foreach (var extra in joined.Where(c => !ReferenceEquals(c, bestJoined)))
+            extra?.Dispose();
+
+        boundaryChain = bestJoined;
+        return true;
+    }
+
+    private static bool AreBoundarySegmentsTangentConnected(
+        Curve first,
+        Curve second,
+        double tolerance)
+    {
+        var joinA = first.PointAtEnd;
+        var joinB = second.PointAtStart;
+        if (joinA.DistanceTo(joinB) > Math.Max(tolerance * 10.0, 1e-4))
+            return false;
+
+        var tangentA = first.TangentAtEnd;
+        var tangentB = second.TangentAtStart;
+        tangentA.Z = 0.0;
+        tangentB.Z = 0.0;
+        if (!tangentA.Unitize() || !tangentB.Unitize())
+            return false;
+
+        const double tangentToleranceDegrees = 12.0;
+        var dot = Math.Max(-1.0, Math.Min(1.0, tangentA * tangentB));
+        var angleDegrees = RhinoMath.ToDegrees(Math.Acos(dot));
+        return angleDegrees <= tangentToleranceDegrees;
     }
 
     private static IntersectionPoint3 ToIntersectionPoint3(Point3d point) =>

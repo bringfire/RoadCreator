@@ -336,6 +336,12 @@ public sealed class IntersectionJoinCorner
     [JsonPropertyName("outgoingJoinPoint")]
     public IntersectionPoint3 OutgoingJoinPoint { get; set; } = new(0.0, 0.0, 0.0);
 
+    [JsonPropertyName("incomingTrimPoint")]
+    public IntersectionPoint3 IncomingTrimPoint { get; set; } = new(0.0, 0.0, 0.0);
+
+    [JsonPropertyName("outgoingTrimPoint")]
+    public IntersectionPoint3 OutgoingTrimPoint { get; set; } = new(0.0, 0.0, 0.0);
+
     [JsonPropertyName("incomingBoundaryParameter")]
     public double IncomingBoundaryParameter { get; set; }
 
